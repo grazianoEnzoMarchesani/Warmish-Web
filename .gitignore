@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# test artefacts (generated locally; tests/fixtures and tests/reference are committed)
+tests/screenshots/
+screenshots/
+
+# tooling / editors
+.claude/
+.vscode/
+.idea/
+
+# python
+__pycache__/
+venv/
+myenv/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs / misc
+*.log
+npm-debug.log*
+.env
+.env.local

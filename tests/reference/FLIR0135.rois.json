@@ -1,0 +1,88 @@
+{
+  "rois": [
+    {
+      "name": "R_inside",
+      "type": "RectROI",
+      "emissivity": 0.95,
+      "pixels": 2867,
+      "min": 27.498940891452058,
+      "max": 50.93212543170218,
+      "mean": 40.5029849146496,
+      "median": 40.29719858153046,
+      "std": 5.349372716803053,
+      "maskChecksum": 48825010
+    },
+    {
+      "name": "R_clipped",
+      "type": "RectROI",
+      "emissivity": 0.62,
+      "pixels": 4536,
+      "min": 43.809733625294335,
+      "max": 64.39203895500461,
+      "mean": 51.08178674957442,
+      "median": 50.61913249902786,
+      "std": 2.8105033341098804,
+      "maskChecksum": 241818696
+    },
+    {
+      "name": "R_outside",
+      "type": "RectROI",
+      "emissivity": 0.95,
+      "pixels": 0,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "median": null,
+      "std": null,
+      "maskChecksum": 0
+    },
+    {
+      "name": "S_centre",
+      "type": "SpotROI",
+      "emissivity": 0.98,
+      "pixels": 302,
+      "min": 30.691618522917075,
+      "max": 45.799887657113594,
+      "mean": 37.580596658572354,
+      "median": 34.25644568662786,
+      "std": 5.635693840953232,
+      "maskChecksum": 9573160
+    },
+    {
+      "name": "S_edge",
+      "type": "SpotROI",
+      "emissivity": 0.3,
+      "pixels": 474,
+      "min": 64.57986862066448,
+      "max": 77.66635512986986,
+      "mean": 72.15751368886293,
+      "median": 73.07745021786965,
+      "std": 2.8569796508249623,
+      "maskChecksum": 1333285
+    },
+    {
+      "name": "P_tri",
+      "type": "PolygonROI",
+      "emissivity": 0.85,
+      "pixels": 7419,
+      "min": 27.479209261571178,
+      "max": 52.578089002153796,
+      "mean": 40.35619433882592,
+      "median": 40.68211292559075,
+      "std": 2.416676950593535,
+      "maskChecksum": 349414915
+    },
+    {
+      "name": "P_below",
+      "type": "PolygonROI",
+      "emissivity": 0.95,
+      "pixels": 4356,
+      "min": 39.37955146974675,
+      "max": 48.98463326292906,
+      "mean": 41.220849786869,
+      "median": 41.16268088052228,
+      "std": 0.9759317219234905,
+      "maskChecksum": 301729348
+    }
+  ]
+}

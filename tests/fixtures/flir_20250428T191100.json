@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "thermal_parameters": {
+    "Emissivity": 1.0,
+    "AtmosphericTemperature": 20.0,
+    "AtmosphericTransmission": 0.95,
+    "RelativeHumidity": 0.5,
+    "ObjectDistance": 3.0,
+    "ReflectedApparentTemperature": 24.999994
+  },
+  "palette": "RdBu",
+  "palette_inverted": false,
+  "temp_range_settings": {
+    "mode": "autorange",
+    "manual_min": 0.0,
+    "manual_max": 100.0
+  },
+  "overlay_settings": {
+    "scale": 0.7405293836351845,
+    "offset_x": -10,
+    "offset_y": -27,
+    "opacity": 100,
+    "blend_mode": "Normal"
+  },
+  "roi_label_settings": {
+    "name": true,
+    "emissivity": true,
+    "min": true,
+    "max": true,
+    "avg": true,
+    "median": false
+  },
+  "rois": [
+    {
+      "type": "SpotROI",
+      "name": "Spot_1",
+      "emissivity": 0.95,
+      "x": 213.0878028561987,
+      "y": 234.2656586466182,
+      "radius": 106.7741935483871
+    },
+    {
+      "type": "RectROI",
+      "name": "Rectangle_1",
+      "emissivity": 0.95,
+      "x": 326,
+      "y": 192,
+      "width": 202.34604105571856,
+      "height": 172.04301075268822
+    },
+    {
+      "type": "PolygonROI",
+      "name": "Polygon_2",
+      "emissivity": 0.95,
+      "points": [
+        [
+          199.7653958944282,
+          411.06549364613875
+        ],
+        [
+          244.73118279569894,
+          322.1114369501466
+        ],
+        [
+          300.4496578690127,
+          370.0097751710654
+        ],
+        [
+          256.4613880742913,
+          426.7057673509286
+        ]
+      ]
+    }
+  ]
+}

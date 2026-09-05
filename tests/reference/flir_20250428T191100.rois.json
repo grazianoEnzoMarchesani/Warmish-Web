@@ -1,0 +1,88 @@
+{
+  "rois": [
+    {
+      "name": "R_inside",
+      "type": "RectROI",
+      "emissivity": 0.95,
+      "pixels": 2867,
+      "min": -3.9233476004358536,
+      "max": -0.32049795923027324,
+      "mean": -2.2002492809179857,
+      "median": -2.194389436271287,
+      "std": 0.9800706370381581,
+      "maskChecksum": 97449330
+    },
+    {
+      "name": "R_clipped",
+      "type": "RectROI",
+      "emissivity": 0.62,
+      "pixels": 4536,
+      "min": -7.472489134996216,
+      "max": 11.165084142828526,
+      "mean": 8.619435868246926,
+      "median": 10.384739458552836,
+      "std": 3.765297636879572,
+      "maskChecksum": 483496776
+    },
+    {
+      "name": "R_outside",
+      "type": "RectROI",
+      "emissivity": 0.95,
+      "pixels": 0,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "median": null,
+      "std": null,
+      "maskChecksum": 0
+    },
+    {
+      "name": "S_centre",
+      "type": "SpotROI",
+      "emissivity": 0.98,
+      "pixels": 302,
+      "min": 1.0903133125170472,
+      "max": 2.5398064162004843,
+      "mean": 1.8116651185309105,
+      "median": 1.7942554973161224,
+      "std": 0.37059965139947976,
+      "maskChecksum": 19097320
+    },
+    {
+      "name": "S_edge",
+      "type": "SpotROI",
+      "emissivity": 0.3,
+      "pixels": 474,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "median": null,
+      "std": null,
+      "maskChecksum": 2660645
+    },
+    {
+      "name": "P_tri",
+      "type": "PolygonROI",
+      "emissivity": 0.85,
+      "pixels": 7419,
+      "min": -2.19489082869476,
+      "max": 21.530963773749214,
+      "mean": 4.994200604459042,
+      "median": 2.399652334316123,
+      "std": 6.7108266970230135,
+      "maskChecksum": 697887235
+    },
+    {
+      "name": "P_below",
+      "type": "PolygonROI",
+      "emissivity": 0.95,
+      "pixels": 11265,
+      "min": 12.142314560527005,
+      "max": 21.901680252245306,
+      "mean": 16.99839502504738,
+      "median": 16.384378549825406,
+      "std": 1.9566287112729654,
+      "maskChecksum": 1899329850
+    }
+  ]
+}
