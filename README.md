@@ -7,6 +7,9 @@ and no Perl**, which is what breaks the desktop build on other Macs.
 The one exception to "nothing leaves the browser" is the optional map view, which
 loads basemap tiles from an external provider — see [Map view](#map-view).
 
+**Live demo:** <https://grazianoenzomarchesani.github.io/Warmish-Web/> — deployed
+to GitHub Pages on every push to `main`. See [Deployment](#deployment-github-pages).
+
 ## Status
 
 | Phase | Scope | State |
@@ -121,13 +124,12 @@ explicit file, since Vite's dev server SPA-falls-back `/geotag/` to the app) fro
 the sidebar and from the map view's empty / all-same-coordinate states. It ships
 in `dist/geotag/` via Vite's `public/` copy. See `public/geotag/README.md`.
 
-
 ## Deployment (GitHub Pages)
 
-`.github/workflows/deploy.yml` builds on every push to `main` and publishes
-`dist/` to Pages — a live copy for checking the app works online, with no
-bearing on the AlterVista deployment. One-time setup: **Settings → Pages →
-Source: GitHub Actions**. The `base: './'` in `vite.config.ts` already makes
-asset URLs relative, so it serves correctly from the project subpath
-(`https://grazianoenzomarchesani.github.io/Warmish-Web/`). The map view still
-reaches its tile provider; nothing else touches the network.
+`.github/workflows/deploy.yml` runs `npm ci && npm run build` on every push to
+`main` and publishes `dist/` to GitHub Pages at
+<https://grazianoenzomarchesani.github.io/Warmish-Web/>. Pages source is set to
+**GitHub Actions** (Settings → Pages). The `base: './'` in `vite.config.ts`
+makes asset URLs relative, so the same build serves correctly from the project
+subpath or from any other static host. The map view still reaches its tile
+provider; nothing else touches the network.
