@@ -126,3 +126,13 @@ in `dist/geotag/` via Vite's `public/` copy. See `public/geotag/README.md`.
 `npm run build`, then upload the **contents** of `dist/` to `public_html`
 (or a subfolder — asset URLs are relative). `dist/.htaccess` sets MIME types,
 compression, and cache headers. No PHP is involved in any processing path.
+
+## Deployment (GitHub Pages)
+
+`.github/workflows/deploy.yml` builds on every push to `main` and publishes
+`dist/` to Pages — a live copy for checking the app works online, with no
+bearing on the AlterVista deployment. One-time setup: **Settings → Pages →
+Source: GitHub Actions**. The `base: './'` in `vite.config.ts` already makes
+asset URLs relative, so it serves correctly from the project subpath
+(`https://grazianoenzomarchesani.github.io/Warmish-Web/`). The map view still
+reaches its tile provider; nothing else touches the network.
