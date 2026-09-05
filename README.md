@@ -121,11 +121,6 @@ explicit file, since Vite's dev server SPA-falls-back `/geotag/` to the app) fro
 the sidebar and from the map view's empty / all-same-coordinate states. It ships
 in `dist/geotag/` via Vite's `public/` copy. See `public/geotag/README.md`.
 
-## Deployment (AlterVista)
-
-`npm run build`, then upload the **contents** of `dist/` to `public_html`
-(or a subfolder — asset URLs are relative). `dist/.htaccess` sets MIME types,
-compression, and cache headers. No PHP is involved in any processing path.
 
 ## Deployment (GitHub Pages)
 
