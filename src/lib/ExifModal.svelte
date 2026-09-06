@@ -2,6 +2,7 @@
   import type { ExifEntry } from '../core/exif';
   import type { FlirMetadata } from '../core/flir';
   import { dialog } from './dialog';
+  import { t } from './i18n.svelte';
 
   let { exif, metadata, fileName, onclose }: {
     exif: ExifEntry[];
@@ -28,14 +29,14 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="backdrop">
-  <button type="button" class="scrim" aria-label="Chiudi" onclick={onclose}></button>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Dati EXIF" tabindex="-1" use:dialog>
+  <button type="button" class="scrim" aria-label={t('exif.close')} onclick={onclose}></button>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={t('exif.title')} tabindex="-1" use:dialog>
     <header>
-      <h2>Dati EXIF<span>{fileName}</span></h2>
-      <button class="x" onclick={onclose} aria-label="Chiudi">×</button>
+      <h2>{t('exif.title')}<span>{fileName}</span></h2>
+      <button class="x" onclick={onclose} aria-label={t('exif.close')}>×</button>
     </header>
     <div class="body">
-      <h3>EXIF standard</h3>
+      <h3>{t('exif.standardTitle')}</h3>
       {#if exif.length}
         <table>
           <tbody>
@@ -45,11 +46,11 @@
           </tbody>
         </table>
       {:else}
-        <p class="hint">Questa immagine non contiene un blocco EXIF standard.</p>
+        <p class="hint">{t('exif.noStandard')}</p>
       {/if}
 
       {#if flir.length}
-        <h3>FLIR / Radiometria</h3>
+        <h3>{t('exif.flirTitle')}</h3>
         <table>
           <tbody>
             {#each flir as row (row.tag)}

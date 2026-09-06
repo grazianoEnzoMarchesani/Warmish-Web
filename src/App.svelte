@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { untrack, tick } from 'svelte';
+  import { untrack, tick, onMount } from 'svelte';
   import Viewer from './lib/Viewer.svelte';
   import ExifModal from './lib/ExifModal.svelte';
   import HelpModal from './lib/HelpModal.svelte';
+  import PrivacyModal from './lib/PrivacyModal.svelte';
+  import ConsentBanner from './lib/ConsentBanner.svelte';
   import ToolRail from './lib/ToolRail.svelte';
   import RangeScale from './lib/RangeScale.svelte';
   import Toasts from './lib/Toasts.svelte';
@@ -29,6 +31,7 @@
   import { buildSession, parseSession, type SessionPatch } from './core/session';
   import { renderHeroImage, type RenderSettings, type UserParameters } from './core/pipeline';
   import type { BatchMessage, BatchRequest } from './lib/batch.worker';
+  import { t, getLocale, setLocale, LOCALES, type Locale } from './lib/i18n.svelte';
 
   const APP_VERSION = '1.0.0';
 
@@ -40,6 +43,7 @@
   let exif = $state<ExifEntry[]>([]);
   let showExif = $state(false);
   let showHelp = $state(false);
+  let showPrivacy = $state(false);
   // "Apri" dropdown in the top bar.
   let openMenu = $state(false);
 
@@ -54,11 +58,24 @@
     else el.setAttribute('data-theme', theme);
     try { localStorage.setItem('warmish.theme', theme); } catch { /* private mode */ }
   });
-  const THEME_LABEL: Record<Theme, string> = { auto: 'automatico', light: 'chiaro', dark: 'scuro' };
   const THEME_GLYPH: Record<Theme, string> = { auto: '◐', light: '☀', dark: '☾' };
+  const themeLabel = (th: Theme) => t(`theme.${th}`);
   const cycleTheme = () => {
     theme = theme === 'auto' ? 'light' : theme === 'light' ? 'dark' : 'auto';
   };
+
+  // Language: IT / EN, persisted by the i18n module. Stamped on <html> for a11y.
+  const pickLocale = (next: Locale) => setLocale(next);
+  $effect(() => { document.documentElement.lang = getLocale(); });
+
+  // The geotag tool (a separate page) links back here with `#privacy` to open
+  // the notice; drop the hash so a refresh doesn't force it open again.
+  onMount(() => {
+    if (location.hash === '#privacy') {
+      showPrivacy = true;
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  });
   // Current zoom %, reported by the viewer, shown in the status bar.
   let zoomPct = $state(100);
   let busy = $state(false);
@@ -122,10 +139,7 @@
   // Sidebar is split into task-focused tabs so only one group of controls is on
   // screen at a time; the choice is remembered like the filmstrip.
   type TabId = 'immagine' | 'aree' | 'esporta';
-  const TAB_LABELS: [TabId, string][] = [
-    ['immagine', 'Immagine'], ['aree', 'Aree'], ['esporta', 'Esporta'],
-  ];
-  const TABS: TabId[] = TAB_LABELS.map(([id]) => id);
+  const TABS: TabId[] = ['immagine', 'aree', 'esporta'];
 
   async function onTabKey(ev: KeyboardEvent) {
     const i = TABS.indexOf(activeTab);
@@ -225,7 +239,7 @@
   async function scanFolderRange() {
     if (!folder.length || folderBounds || folderRangeScanning) return;
     folderRangeScanning = true;
-    const prog = progressToast('Scansione della cartella per la scala comune…');
+    const prog = progressToast(t('toast.folderScanCommon'));
     try {
       let lo = Infinity;
       let hi = -Infinity;
@@ -247,11 +261,11 @@
       }
       if (lo < hi) {
         folderBounds = { min: lo, max: hi };
-        prog.finish('success', `Scala comune alla cartella: ${lo.toFixed(1)}–${hi.toFixed(1)} °C`);
+        prog.finish('success', t('toast.folderScaleResult', { min: lo.toFixed(1), max: hi.toFixed(1) }));
         if (folderRange) regenThumbs(folder.map((e) => e.path));
       } else {
         folderRange = false;
-        prog.finish('error', 'Impossibile calcolare la scala comune alla cartella');
+        prog.finish('error', t('toast.folderScaleFailed'));
       }
     } finally {
       folderRangeScanning = false;
@@ -510,14 +524,14 @@
       // The overlay is only worth showing if the session actually configured one.
       if (visibleBitmap && (patch.alignment || patch.blend)) showVisible = true;
     }
-    if (announce) toast.success(`Sessione caricata da ${source}`);
+    if (announce) toast.success(t('toast.sessionLoaded', { source }));
   }
 
   async function loadSession(f: File) {
     try {
       applySession(parseSession(JSON.parse(await f.text())), f.name);
     } catch (e) {
-      toast.error(`Sessione non valida: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(t('toast.invalidSession', { error: e instanceof Error ? e.message : String(e) }));
     }
   }
 
@@ -543,7 +557,7 @@
           const active = applyWorkspace(obj.workspace) ?? activePath;
           activePath = null;
           if (active) await openFromFolder(active);
-          toast.success(`Sessione cartella caricata (${Object.keys(obj.files).length} immagini)`);
+          toast.success(t('toast.folderSessionLoaded', { count: Object.keys(obj.files).length }));
           return;
         }
       } catch { /* fall through to the normal error */ }
@@ -556,7 +570,7 @@
 
     if (image) await load(image);
     if (session && file) await loadSession(session);
-    else if (session && !image) toast.error('Apri prima l’immagine, poi la sessione .json');
+    else if (session && !image) toast.error(t('toast.openImageFirst'));
   }
 
   function onPick(ev: Event) {
@@ -829,17 +843,20 @@
     }
     folderState = next;
 
-    const img = (k: number) => (k === 1 ? 'immagine' : 'immagini');
+    const imgWord = (k: number) => t('toast.imageWord', { count: k });
     if (areaMode === 'replace') {
-      toast.success(`Impostazioni applicate a ${n} ${img(n)} (aree sostituite)`);
+      toast.success(t('toast.settingsAppliedReplace', { count: n }));
     } else if (areaMode === 'appearance') {
-      let msg = `Impostazioni applicate a ${n} ${img(n)}. Aspetto allineato per ${styledAreas} `
-        + `${styledAreas === 1 ? 'area' : 'aree'} in ${styledImgs} ${img(styledImgs)}`;
-      if (noMatch) msg += `; ${noMatch} ${img(noMatch)} senza aree con lo stesso nome`;
-      if (ambiguous.length) msg += `. Nomi non univoci sulla foto corrente, saltati: ${ambiguous.join(', ')}`;
+      let msg = t('toast.settingsAppliedAppearance', {
+        n, imgN: imgWord(n),
+        areas: styledAreas, areaWord: t('toast.areaWord', { count: styledAreas }),
+        styled: styledImgs, imgStyled: imgWord(styledImgs),
+      });
+      if (noMatch) msg += t('toast.appearanceNoMatch', { count: noMatch, imgWord: imgWord(noMatch) });
+      if (ambiguous.length) msg += t('toast.appearanceAmbiguous', { names: ambiguous.join(', ') });
       toast.success(msg);
     } else {
-      toast.success(`Impostazioni applicate a ${n} ${img(n)}`);
+      toast.success(t('toast.settingsApplied', { count: n }));
     }
     regenThumbs(selection);
     // A bulk calibration change can shift the folder envelope — re-measure it.
@@ -910,7 +927,7 @@
       // Tiles for images that came in with a saved session need to reflect it;
       // the rest keep their raw preview until the user opens or bulk-edits them.
       regenThumbs(entries.filter((e) => state.has(e.path)).map((e) => e.path));
-    } else toast.error('La cartella non contiene immagini .jpg');
+    } else toast.error(t('toast.folderNoImages'));
   }
 
   async function openFromFolder(path: string) {
@@ -925,7 +942,7 @@
     if (!file) { activePath = null; return; }
     activePath = path;
     const saved = folderState.get(path);
-    if (saved) applySession(parseSession(saved), 'lavoro sulla cartella', false);
+    if (saved) applySession(parseSession(saved), t('toast.sessionSourceFolder'), false);
   }
 
   // Strip thumbnails start as the raw file previews, so on their own they never
@@ -1182,31 +1199,31 @@
     const exportDate = new Date().toISOString().slice(0, 10);
     const zipName = `warmish_export_${exportDate}.zip`;
     const one = files.length === 1;
-    const prog = progressToast(one ? 'Elaborazione dell’immagine…' : `Elaborazione di ${files.length} immagini…`);
+    const prog = progressToast(one ? t('toast.processingImage') : t('toast.processingImages', { count: files.length }));
 
     const worker = new Worker(new URL('./lib/batch.worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (ev: MessageEvent<BatchMessage>) => {
       const m = ev.data;
       if (m.type === 'progress') {
         batchProgress = { done: m.done, total: m.total, name: m.name };
-        prog.update(m.done, m.total, one ? 'Elaborazione…' : `${m.done}/${m.total} · ${m.name}`);
+        prog.update(m.done, m.total, one ? t('toast.processingShort') : t('toast.batchProgress', { done: m.done, total: m.total, name: m.name }));
       } else if (m.type === 'done') {
         download(new Blob([m.zip], { type: 'application/zip' }), zipName);
         if (m.failures.length) {
-          prog.finish('error', `${m.processed} immagini elaborate, ${m.failures.length} non riuscite (vedi errori.txt nello ZIP)`);
+          prog.finish('error', t('toast.exportPartial', { processed: m.processed, failed: m.failures.length }));
         } else {
-          prog.finish('success', one ? 'Immagine esportata' : `${m.processed} immagini esportate`);
+          prog.finish('success', one ? t('toast.imageExported') : t('toast.imagesExported', { count: m.processed }));
         }
         batchProgress = null;
         worker.terminate();
       } else {
-        prog.finish('error', `Errore: ${m.message}`);
+        prog.finish('error', t('toast.workerError', { message: m.message }));
         batchProgress = null;
         worker.terminate();
       }
     };
     worker.onerror = (e) => {
-      prog.finish('error', `Errore nel worker: ${e.message}`);
+      prog.finish('error', t('toast.workerFail', { message: e.message }));
       batchProgress = null;
       worker.terminate();
     };
@@ -1215,6 +1232,7 @@
       includeOriginals: withOriginals,
       exportDate,
       warmishVersion: APP_VERSION,
+      lang: getLocale(),
     } satisfies BatchRequest);
   }
 
@@ -1272,51 +1290,67 @@
     <h1 class="brand">Warmish <span>Web</span></h1>
 
     <details class="menu" bind:open={openMenu}>
-      <summary>Apri</summary>
+      <summary>{t('menu.open')}</summary>
       <div class="menu-pop">
         <button onclick={() => { openMenu = false; document.getElementById('pick')?.click(); }}>
-          Immagine o immagini…
+          {t('menu.images')}
         </button>
         <button onclick={() => { openMenu = false; document.getElementById('folderpick')?.click(); }}>
-          Cartella di immagini…
+          {t('menu.folder')}
         </button>
         <hr />
         <button disabled={!file} onclick={() => { openMenu = false; showExif = true; }}>
-          Dati EXIF…
+          {t('menu.exif')}
         </button>
         <a href="geotag/index.html" target="_blank" rel="noopener" onclick={() => (openMenu = false)}>
-          Geotag: correggi il GPS…
+          {t('menu.geotag')}
         </a>
-        <p class="menu-hint">Puoi anche trascinare i file in questa finestra.</p>
+        <hr />
+        <button onclick={() => { openMenu = false; showPrivacy = true; }}>
+          {t('menu.privacy')}
+        </button>
+        <p class="menu-hint">{t('menu.dragHint')}</p>
       </div>
     </details>
 
     {#if fileName}<span class="cur" title={fileName}>{fileName}</span>{/if}
-    {#if folder.length}<span class="cur muted">cartella · {folder.length} img</span>{/if}
+    {#if folder.length}<span class="cur muted">{t('topbar.folderCount', { count: folder.length })}</span>{/if}
 
     <div class="grow"></div>
 
     {#if file}
-      <div class="viewswitch" role="group" aria-label="Modalità di visualizzazione">
-        <button class:on={viewMode === 'thermal'} aria-pressed={viewMode === 'thermal'} onclick={() => setViewMode('thermal')}>Termica</button>
+      <div class="viewswitch" role="group" aria-label={t('topbar.viewModes')}>
+        <button class:on={viewMode === 'thermal'} aria-pressed={viewMode === 'thermal'} onclick={() => setViewMode('thermal')}>{t('topbar.thermal')}</button>
         <button
           class:on={viewMode === 'map'}
           aria-pressed={viewMode === 'map'}
           onclick={() => setViewMode('map')}
-          title="Posiziona sulla mappa le foto con coordinate GPS (M)"
+          title={t('topbar.mapTitle')}
         >
-          Mappa{#if mapCount}<span class="badge">{mapCount}</span>{/if}
+          {t('topbar.map')}{#if mapCount}<span class="badge">{mapCount}</span>{/if}
         </button>
       </div>
-      <button onclick={() => (activeTab = 'esporta')}>Esporta</button>
+      <button onclick={() => (activeTab = 'esporta')}>{t('topbar.export')}</button>
     {/if}
+    <div class="langswitch" role="group" aria-label={t('lang.switch')}>
+      {#each LOCALES as l (l.code)}
+        <button class:on={getLocale() === l.code} aria-pressed={getLocale() === l.code} onclick={() => pickLocale(l.code)}>{l.code.toUpperCase()}</button>
+      {/each}
+    </div>
     <button
       class="icon"
       onclick={cycleTheme}
-      aria-label={`Tema: ${THEME_LABEL[theme]}. Cambia.`}
-      title={`Tema: ${THEME_LABEL[theme]}`}
+      aria-label={t('theme.cycle', { name: themeLabel(theme) })}
+      title={t('theme.title', { name: themeLabel(theme) })}
     >{THEME_GLYPH[theme]}</button>
-    <button class="icon" onclick={() => (showHelp = true)} aria-label="Aiuto e scorciatoie" title="Aiuto e scorciatoie">?</button>
+    <button class="privacy-btn" onclick={() => (showPrivacy = true)} title={t('privacy.title')}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="4" y="10.5" width="16" height="10.5" rx="2" /><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+      </svg>
+      {t('privacy.short')}
+    </button>
+    <button class="icon" onclick={() => (showHelp = true)} aria-label={t('topbar.help')} title={t('topbar.help')}>?</button>
   </header>
 
   <div class="layout">
@@ -1327,8 +1361,8 @@
       onchange={(e) => { const l = (e.currentTarget as HTMLInputElement).files; if (l?.length) ingestFolder(l); }} />
 
     {#if file && params}
-      <div class="tabs" role="tablist" aria-label="Pannelli">
-        {#each TAB_LABELS as [id, label] (id)}
+      <div class="tabs" role="tablist" aria-label={t('tabs.panels')}>
+        {#each TABS as id (id)}
           <button
             role="tab"
             id={`tab-${id}`}
@@ -1338,26 +1372,26 @@
             class:active={activeTab === id}
             onclick={() => (activeTab = id)}
             onkeydown={onTabKey}
-          >{label}</button>
+          >{t(`tabs.${id}`)}</button>
         {/each}
       </div>
 
       <div class="panel" role="tabpanel" id="tabpanel" aria-labelledby={`tab-${activeTab}`} tabindex="-1">
       {#if activeTab === 'immagine'}
       <section>
-        <h2>Palette</h2>
+        <h2>{t('image.paletteTitle')}</h2>
         <select bind:value={palette}>
           {#each PALETTE_NAMES as name}<option value={name}>{name}</option>{/each}
         </select>
-        <label class="check"><input type="checkbox" bind:checked={inverted} /> Invertita</label>
-        <label class="check"><input type="checkbox" bind:checked={showLegend} /> Scala colori</label>
+        <label class="check"><input type="checkbox" bind:checked={inverted} /> {t('image.inverted')}</label>
+        <label class="check"><input type="checkbox" bind:checked={showLegend} /> {t('image.colorScale')}</label>
       </section>
 
       <section>
-        <h2>Intervallo</h2>
-        <label class="check"><input type="checkbox" bind:checked={autoRange} /> Automatico</label>
+        <h2>{t('image.rangeTitle')}</h2>
+        <label class="check"><input type="checkbox" bind:checked={autoRange} /> {t('image.auto')}</label>
         {#if autoRange}
-          <label for="stretch">Contrasto</label>
+          <label for="stretch">{t('image.contrast')}</label>
           <select
             id="stretch"
             value={folderRange ? 'folder' : String(stretchPct)}
@@ -1367,41 +1401,41 @@
               else { folderRange = false; stretchPct = Number(v); }
             }}
           >
-            <option value="0">Min/Max reali</option>
-            <option value="90">Stretch 90%</option>
-            <option value="98">Stretch 98%</option>
+            <option value="0">{t('image.realMinMax')}</option>
+            <option value="90">{t('image.stretch90')}</option>
+            <option value="98">{t('image.stretch98')}</option>
             {#if !folderRange && stretchPct !== 0 && stretchPct !== 90 && stretchPct !== 98}
-              <option value={String(stretchPct)}>Stretch {+stretchPct.toFixed(1)}%</option>
+              <option value={String(stretchPct)}>{t('image.stretchCustom', { pct: +stretchPct.toFixed(1) })}</option>
             {/if}
             {#if folder.length}
-              <option value="folder">Comune alla cartella</option>
+              <option value="folder">{t('image.folderCommon')}</option>
             {/if}
           </select>
           {#if folderRange}
             <p class="hint">
-              {#if folderRangeScanning}Scansione della cartella…
-              {:else if folderBounds}Scala fissa {folderBounds.min.toFixed(1)}–{folderBounds.max.toFixed(1)} °C su tutte le {folder.length} immagini.
-              {:else}Scala comune non disponibile.{/if}
+              {#if folderRangeScanning}{t('image.folderScanning')}
+              {:else if folderBounds}{t('image.folderFixed', { min: folderBounds.min.toFixed(1), max: folderBounds.max.toFixed(1), count: folder.length })}
+              {:else}{t('image.folderUnavailable')}{/if}
             </p>
           {/if}
         {:else}
           <div class="row">
-            <div><label for="mn">Min °C</label><input id="mn" type="number" step="0.1" bind:value={manualMin} /></div>
-            <div><label for="mx">Max °C</label><input id="mx" type="number" step="0.1" bind:value={manualMax} /></div>
+            <div><label for="mn">{t('image.minC')}</label><input id="mn" type="number" step="0.1" bind:value={manualMin} /></div>
+            <div><label for="mx">{t('image.maxC')}</label><input id="mx" type="number" step="0.1" bind:value={manualMax} /></div>
           </div>
         {/if}
       </section>
 
       {#if file.visible}
         <section>
-          <h2>Immagine visibile</h2>
-          <label class="check"><input type="checkbox" bind:checked={showVisible} /> Sovrapponi la foto reale</label>
+          <h2>{t('image.visibleTitle')}</h2>
+          <label class="check"><input type="checkbox" bind:checked={showVisible} /> {t('image.overlayReal')}</label>
           {#if showVisible}
-            <label for="bl">Fusione</label>
+            <label for="bl">{t('image.blend')}</label>
             <select id="bl" bind:value={blend}>
               {#each BLEND_NAMES as name}<option value={name}>{name}</option>{/each}
             </select>
-            <label for="op">Opacità termica: {Math.round(opacity * 100)}%</label>
+            <label for="op">{t('image.thermalOpacity', { pct: Math.round(opacity * 100) })}</label>
             <input id="op" type="range" min="0" max="1" step="0.01" bind:value={opacity} />
           {/if}
         </section>
@@ -1409,35 +1443,35 @@
 
       {#if stats}
         <section>
-          <h2>Statistiche</h2>
+          <h2>{t('image.statsTitle')}</h2>
           <dl>
-            <dt>Min</dt><dd>{fmt(stats.min)} °C</dd>
-            <dt>Max</dt><dd>{fmt(stats.max)} °C</dd>
-            <dt>Media</dt><dd>{fmt(stats.mean)} °C</dd>
-            <dt>Sensore</dt><dd>{file.width}×{file.height}</dd>
+            <dt>{t('image.statMin')}</dt><dd>{fmt(stats.min)} °C</dd>
+            <dt>{t('image.statMax')}</dt><dd>{fmt(stats.max)} °C</dd>
+            <dt>{t('image.statMean')}</dt><dd>{fmt(stats.mean)} °C</dd>
+            <dt>{t('image.statSensor')}</dt><dd>{file.width}×{file.height}</dd>
           </dl>
         </section>
       {/if}
 
       <details class="advanced" bind:open={advOpen}>
-        <summary>Avanzate</summary>
+        <summary>{t('image.advanced')}</summary>
 
         <div class="adv">
-          <h3>Calibrazione</h3>
-          <label for="em">Emissività: {params.Emissivity.toFixed(2)}</label>
+          <h3>{t('image.calibrationTitle')}</h3>
+          <label for="em">{t('image.emissivity', { value: params.Emissivity.toFixed(2) })}</label>
           <input id="em" type="range" min="0.1" max="1" step="0.01" bind:value={params.Emissivity} />
-          <label for="rt">Temp. riflessa apparente (°C)</label>
+          <label for="rt">{t('image.reflectedTemp')}</label>
           <input id="rt" type="number" step="0.5" value={shown(params.ReflectedApparentTemperature)} onchange={edit('ReflectedApparentTemperature')} />
-          <label for="at">Temp. atmosferica (°C)</label>
+          <label for="at">{t('image.atmosphericTemp')}</label>
           <input id="at" type="number" step="0.5" value={shown(params.AtmosphericTemperature)} onchange={edit('AtmosphericTemperature')} />
-          <label for="rh">Umidità relativa (%)</label>
+          <label for="rh">{t('image.relativeHumidity')}</label>
           <input id="rh" type="number" step="1" value={shown(params.RelativeHumidity, 0)} onchange={edit('RelativeHumidity')} />
         </div>
 
         {#if file.visible}
           <div class="adv">
-            <h3>Foto reale</h3>
-            <label for="vf">Filtro</label>
+            <h3>{t('image.realPhotoTitle')}</h3>
+            <label for="vf">{t('image.filter')}</label>
             <select
               id="vf"
               value={visibleFilter.name}
@@ -1446,23 +1480,23 @@
                 visibleFilter = { name, strength: filterPreset(name) };
               }}
             >
-              {#each FILTERS as f}<option value={f.name}>{f.label}</option>{/each}
+              {#each FILTERS as f}<option value={f.name}>{t(`filters.${f.name}`)}</option>{/each}
             </select>
             {#if visibleFilter.name !== 'none'}
-              <label for="vfs">Intensità: {visibleFilter.strength}%</label>
+              <label for="vfs">{t('image.filterStrength', { pct: visibleFilter.strength })}</label>
               <input id="vfs" type="range" min="0" max="100" step="1" bind:value={visibleFilter.strength} />
             {/if}
           </div>
 
           <div class="adv">
-            <h3>Allineamento termico</h3>
-            <label for="al">Scala: {alignment.scale.toFixed(2)}×</label>
+            <h3>{t('image.alignmentTitle')}</h3>
+            <label for="al">{t('image.alignmentScale', { value: alignment.scale.toFixed(2) })}</label>
             <input id="al" type="range" min="0.1" max="5" step="0.01" bind:value={alignment.scale} />
             <div class="row">
-              <div><label for="ox">Offset X</label><input id="ox" type="number" step="1" bind:value={alignment.offsetX} /></div>
-              <div><label for="oy">Offset Y</label><input id="oy" type="number" step="1" bind:value={alignment.offsetY} /></div>
+              <div><label for="ox">{t('image.offsetX')}</label><input id="ox" type="number" step="1" bind:value={alignment.offsetX} /></div>
+              <div><label for="oy">{t('image.offsetY')}</label><input id="oy" type="number" step="1" bind:value={alignment.offsetY} /></div>
             </div>
-            <button class="wide" onclick={() => (alignment = file ? alignmentFromMetadata(file.metadata) : { ...DEFAULT_ALIGNMENT })}>Reimposta allineamento</button>
+            <button class="wide" onclick={() => (alignment = file ? alignmentFromMetadata(file.metadata) : { ...DEFAULT_ALIGNMENT })}>{t('image.resetAlignment')}</button>
           </div>
         {/if}
       </details>
@@ -1470,11 +1504,8 @@
 
       {#if activeTab === 'aree'}
       <section>
-        <h2>Aree di interesse</h2>
-        <p class="hint">
-          Gli strumenti di disegno sono sulla barra a sinistra dell’immagine
-          (o con i tasti V, R, S, P).
-        </p>
+        <h2>{t('areas.title')}</h2>
+        <p class="hint">{t('areas.toolsHint')}</p>
 
         {#if rois.length}
           <ul class="rois">
@@ -1485,7 +1516,7 @@
                   <span class="dot" style="background:{roi.color}"></span>
                   <input
                     type="color"
-                    aria-label={`Colore di ${roi.name}`}
+                    aria-label={t('areas.colorOf', { name: roi.name })}
                     value={colorToHex(roi.color)}
                     oninput={(e) => (roi.color = e.currentTarget.value)}
                   />
@@ -1494,41 +1525,41 @@
                   <span class="nm">{roi.name}</span>
                   <span class="tm">{fmt(s?.mean)} °C</span>
                 </button>
-                <button class="del" onclick={() => deleteRoi(roi.id)} aria-label={`Elimina ${roi.name}`} title="Elimina">×</button>
+                <button class="del" onclick={() => deleteRoi(roi.id)} aria-label={t('areas.deleteOf', { name: roi.name })} title={t('areas.delete')}>×</button>
               </li>
             {/each}
           </ul>
         {:else}
-          <p class="hint">Nessuna area. Scegli uno strumento e disegna sull’immagine.</p>
+          <p class="hint">{t('areas.empty')}</p>
         {/if}
 
         {#if selected}
           {@const s = roiStats.get(selected.id)}
           <div class="detail">
-            <label for="rn">Nome</label>
+            <label for="rn">{t('areas.name')}</label>
             <input id="rn" type="text" bind:value={selected.name} />
-            <label for="re">Emissività area: {selected.emissivity.toFixed(2)}</label>
+            <label for="re">{t('areas.areaEmissivity', { value: selected.emissivity.toFixed(2) })}</label>
             <input id="re" type="range" min="0.1" max="1" step="0.01" bind:value={selected.emissivity} />
             <dl>
-              <dt>Min</dt><dd>{fmt(s?.min)} °C</dd>
-              <dt>Max</dt><dd>{fmt(s?.max)} °C</dd>
-              <dt>Media</dt><dd>{fmt(s?.mean)} °C</dd>
-              <dt>Mediana</dt><dd>{fmt(s?.median)} °C</dd>
-              <dt>Dev. std</dt><dd>{fmt(s?.std)} °C</dd>
-              <dt>Pixel</dt><dd>{s?.pixels ?? 0}</dd>
+              <dt>{t('areas.statMin')}</dt><dd>{fmt(s?.min)} °C</dd>
+              <dt>{t('areas.statMax')}</dt><dd>{fmt(s?.max)} °C</dd>
+              <dt>{t('areas.statMean')}</dt><dd>{fmt(s?.mean)} °C</dd>
+              <dt>{t('areas.statMedian')}</dt><dd>{fmt(s?.median)} °C</dd>
+              <dt>{t('areas.statStd')}</dt><dd>{fmt(s?.std)} °C</dd>
+              <dt>{t('areas.statPixels')}</dt><dd>{s?.pixels ?? 0}</dd>
             </dl>
           </div>
         {/if}
 
         <details>
-          <summary>Etichette</summary>
-          <label class="check"><input type="checkbox" bind:checked={labels.name} /> Nome</label>
-          <label class="check"><input type="checkbox" bind:checked={labels.emissivity} /> Emissività</label>
-          <label class="check"><input type="checkbox" bind:checked={labels.min} /> Min</label>
-          <label class="check"><input type="checkbox" bind:checked={labels.max} /> Max</label>
-          <label class="check"><input type="checkbox" bind:checked={labels.avg} /> Media</label>
-          <label class="check"><input type="checkbox" bind:checked={labels.median} /> Mediana</label>
-          <label for="label-scale">Dimensione etichette: {Math.round(labels.scale * 100)}%</label>
+          <summary>{t('areas.labelsTitle')}</summary>
+          <label class="check"><input type="checkbox" bind:checked={labels.name} /> {t('areas.labelName')}</label>
+          <label class="check"><input type="checkbox" bind:checked={labels.emissivity} /> {t('areas.labelEmissivity')}</label>
+          <label class="check"><input type="checkbox" bind:checked={labels.min} /> {t('areas.labelMin')}</label>
+          <label class="check"><input type="checkbox" bind:checked={labels.max} /> {t('areas.labelMax')}</label>
+          <label class="check"><input type="checkbox" bind:checked={labels.avg} /> {t('areas.labelAvg')}</label>
+          <label class="check"><input type="checkbox" bind:checked={labels.median} /> {t('areas.labelMedian')}</label>
+          <label for="label-scale">{t('areas.labelSize', { pct: Math.round(labels.scale * 100) })}</label>
           <input
             id="label-scale"
             type="range"
@@ -1543,48 +1574,46 @@
 
       {#if activeTab === 'esporta'}
       <section class="actions">
-        <h2>Immagine corrente</h2>
+        <h2>{t('export.currentImage')}</h2>
         <button class="wide" onclick={exportZip} disabled={!currentFile || !!batchProgress}>
-          {batchProgress ? 'Elaborazione…' : 'Esporta (.zip)'}
+          {batchProgress ? t('export.processing') : t('export.exportZip')}
         </button>
-        <button onclick={exportSession}>Salva sessione (.json)</button>
+        <button onclick={exportSession}>{t('export.saveSession')}</button>
         <label class="check">
           <input type="checkbox" bind:checked={includeOriginals} />
-          Includi gli originali nello ZIP
+          {t('export.includeOriginals')}
         </label>
         <p class="hint">
-          Termica pulita e annotata, foto reale, <code>aree.csv</code> e sessione.
-          <button class="linkish" onclick={() => (showHelp = true)}>Dettagli</button>
+          {t('export.currentHint', { csv: 'aree.csv' })}
+          <button class="linkish" onclick={() => (showHelp = true)}>{t('export.details')}</button>
         </p>
       </section>
 
       {#if folder.length}
         <section class="actions">
-          <h2>Cartella aperta ({folder.length} immagini)</h2>
+          <h2>{t('export.folderOpen', { count: folder.length })}</h2>
           <button class="wide" onclick={exportFolderZip} disabled={!!batchProgress}>
-            {batchProgress ? 'Elaborazione…' : 'Esporta cartella (.zip)'}
+            {batchProgress ? t('export.processing') : t('export.exportFolderZip')}
           </button>
           <button onclick={exportFolderSession} disabled={!!batchProgress}>
-            Salva sessione cartella (.json)
+            {t('export.saveFolderSession')}
           </button>
           <p class="hint">
-            Ogni immagine con la propria calibrazione e le proprie modifiche.
-            <button class="linkish" onclick={() => (showHelp = true)}>Dettagli</button>
+            {t('export.folderHint')}
+            <button class="linkish" onclick={() => (showHelp = true)}>{t('export.details')}</button>
           </p>
         </section>
       {/if}
       {/if}
       </div>
     {:else}
-      <p class="hint aside-empty">
-        Apri un’immagine per accedere a palette, parametri, aree ed esportazione.
-      </p>
+      <p class="hint aside-empty">{t('asideEmpty')}</p>
     {/if}
   </aside>
 
   <main>
     {#if busy}
-      <div class="empty">Elaborazione…</div>
+      <div class="empty">{t('main.processing')}</div>
     {:else if file}
       <div class="pane" class:hidden={viewMode !== 'thermal'}>
         <Viewer
@@ -1604,7 +1633,7 @@
         />
       </div>
       {#if viewMode === 'thermal'}
-        <ToolRail {tool} onpick={(t) => (tool = t)} />
+        <ToolRail {tool} onpick={(next) => (tool = next)} />
         {#if showLegend && temperatures}
           <RangeScale
             lut={getLut(palette)}
@@ -1634,54 +1663,47 @@
             onopen={openFromMap}
             tourImage={renderTourImage}
             ontour={(active) => (tourMode = active)}
+            onshowprivacy={() => (showPrivacy = true)}
           />
         </div>
       {/if}
     {:else}
       <div class="empty big">
-        <h2>Editor termico FLIR, tutto nel browser</h2>
-        <p>
-          Apri una foto radiometrica FLIR per rimappare la palette, correggere i
-          parametri di calibrazione, misurare aree e temperature ed esportare le
-          immagini pronte. Più foto o una cartella si modificano in blocco e si
-          esportano in un solo ZIP.
-        </p>
+        <h2>{t('main.emptyTitle')}</h2>
+        <p>{t('main.emptyBody')}</p>
         <div class="empty-actions">
-          <button class="primary" onclick={() => document.getElementById('pick')?.click()}>Apri immagini…</button>
-          <button onclick={() => document.getElementById('folderpick')?.click()}>Apri una cartella…</button>
+          <button class="primary" onclick={() => document.getElementById('pick')?.click()}>{t('main.openImages')}</button>
+          <button onclick={() => document.getElementById('folderpick')?.click()}>{t('main.openFolder')}</button>
         </div>
-        <small>
-          Trascina qui i file. Tutto viene elaborato sul tuo computer: nessun
-          file viene caricato online.
-        </small>
+        <small>{t('main.dropHint')}</small>
       </div>
     {/if}
   </main>
   </div>
 
   {#if folder.length}
-    <nav class="strip" class:collapsed={!filmstripOpen} aria-label="Immagini della cartella">
+    <nav class="strip" class:collapsed={!filmstripOpen} aria-label={t('filmstrip.folderImages')}>
       <div class="strip-bar">
         <button
           class="toggle"
           onclick={() => (filmstripOpen = !filmstripOpen)}
           aria-expanded={filmstripOpen}
-          title={filmstripOpen ? 'Nascondi la striscia (F)' : 'Mostra la striscia (F)'}
+          title={filmstripOpen ? t('filmstrip.hide') : t('filmstrip.show')}
         >{filmstripOpen ? '▾' : '▸'}</button>
-        <span>{folder.length} immagini{#if selectedCount} · {selectedCount} selezionate{/if}</span>
+        <span>{t('filmstrip.images', { count: folder.length })}{#if selectedCount}{t('filmstrip.selectedSuffix', { count: selectedCount })}{/if}</span>
         {#if thumbJobs.size}
-          <span class="strip-jobs">· aggiorno {thumbJobs.size} {thumbJobs.size === 1 ? 'anteprima' : 'anteprime'}…</span>
+          <span class="strip-jobs">{t('filmstrip.updatingThumbs', { count: thumbJobs.size })}</span>
         {/if}
         <div class="grow"></div>
         {#if pageCount > 1}
           <div class="pager">
-            <button disabled={page === 0} onclick={() => (page -= 1)} aria-label="Pagina precedente">‹</button>
+            <button disabled={page === 0} onclick={() => (page -= 1)} aria-label={t('filmstrip.prevPage')}>‹</button>
             <span>{page + 1}/{pageCount}</span>
-            <button disabled={page >= pageCount - 1} onclick={() => (page += 1)} aria-label="Pagina successiva">›</button>
+            <button disabled={page >= pageCount - 1} onclick={() => (page += 1)} aria-label={t('filmstrip.nextPage')}>›</button>
           </div>
         {/if}
         <button class="bulk-open" disabled={!activePath} onclick={() => (bulkOpen = true)}>
-          Modifica in blocco{#if selectedCount}&nbsp;({selectedCount}){/if}…
+          {selectedCount ? t('filmstrip.bulkEditCount', { count: selectedCount }) : t('filmstrip.bulkEditPlain')}
         </button>
       </div>
       {#if filmstripOpen}
@@ -1695,7 +1717,7 @@
                 title={e.path}
               >
                 <img src={e.thumb} alt={e.path} loading="lazy" />
-                {#if folderState.has(e.path)}<span class="edited" title="Ha modifiche salvate"></span>{/if}
+                {#if folderState.has(e.path)}<span class="edited" title={t('filmstrip.savedEdits')}></span>{/if}
                 {#if thumbJobs.has(e.path)}<span class="thumb-spin" aria-hidden="true"></span>{/if}
               </button>
               <input
@@ -1703,8 +1725,8 @@
                 type="checkbox"
                 checked={selection.has(e.path)}
                 onchange={() => toggleSelect(e.path)}
-                aria-label={`Seleziona ${e.path.split('/').pop()}`}
-                title="Seleziona per la modifica in blocco"
+                aria-label={t('filmstrip.selectFor', { name: e.path.split('/').pop() ?? e.path })}
+                title={t('filmstrip.selectForBulk')}
               />
             </div>
           {/each}
@@ -1716,7 +1738,7 @@
   {#if file}
     <footer class="statusbar">
       <span class="z">{zoomPct}%</span>
-      <button class="linkish" onclick={() => viewer?.fit()}>Adatta</button>
+      <button class="linkish" onclick={() => viewer?.fit()}>{t('status.fit')}</button>
       <span class="sep">·</span>
       <span>{file.width}×{file.height}</span>
       {#if probe && viewMode === 'thermal'}
@@ -1724,16 +1746,16 @@
         <span class="probe-read">x{probe.x} y{probe.y} → <strong>{fmt(probe.t)} °C</strong></span>
       {/if}
       <div class="grow"></div>
-      <span>{palette}{#if inverted} · invertita{/if}</span>
+      <span>{palette}{#if inverted} · {t('status.inverted')}{/if}</span>
       <span class="sep">·</span>
       <span>
-        {#if !autoRange}{`${fmt(range.min)}–${fmt(range.max)} °C`}
-        {:else if folderRange && folderRangeScanning}scansione cartella…
-        {:else if folderScaleActive}{`scala cartella · ${fmt(range.min)}–${fmt(range.max)} °C`}
-        {:else if stretchPct > 0}{`stretch ${+stretchPct.toFixed(1)}% · ${fmt(range.min)}–${fmt(range.max)} °C`}
-        {:else}intervallo auto{/if}
+        {#if !autoRange}{t('status.range', { min: fmt(range.min), max: fmt(range.max) })}
+        {:else if folderRange && folderRangeScanning}{t('status.folderScanning')}
+        {:else if folderScaleActive}{t('status.folderScale', { min: fmt(range.min), max: fmt(range.max) })}
+        {:else if stretchPct > 0}{t('status.stretch', { pct: +stretchPct.toFixed(1), min: fmt(range.min), max: fmt(range.max) })}
+        {:else}{t('status.autoRange')}{/if}
       </span>
-      {#if gps}<span class="sep">·</span><span title="Coordinate GPS presenti nella foto">GPS</span>{/if}
+      {#if gps}<span class="sep">·</span><span title={t('status.gpsTitle')}>{t('status.gps')}</span>{/if}
     </footer>
   {/if}
 </div>
@@ -1744,59 +1766,66 @@
 {#if showHelp}
   <HelpModal onclose={() => (showHelp = false)} />
 {/if}
+{#if showPrivacy}
+  <PrivacyModal onclose={() => (showPrivacy = false)} />
+{/if}
+
+<ConsentBanner
+  onshowprivacy={() => (showPrivacy = true)}
+  suppressed={!!file && viewMode === 'map'}
+/>
 
 <Toasts />
 
 {#if bulkOpen}
-  <button type="button" class="sheet-scrim" aria-label="Chiudi" onclick={() => (bulkOpen = false)}></button>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="Modifica in blocco" tabindex="-1" use:dialog>
+  <button type="button" class="sheet-scrim" aria-label={t('bulk.close')} onclick={() => (bulkOpen = false)}></button>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label={t('bulk.title')} tabindex="-1" use:dialog>
     <header>
-      <h2>Modifica in blocco</h2>
-      <button class="x" onclick={() => (bulkOpen = false)} aria-label="Chiudi">×</button>
+      <h2>{t('bulk.title')}</h2>
+      <button class="x" onclick={() => (bulkOpen = false)} aria-label={t('bulk.close')}>×</button>
     </header>
     <div class="sheet-body">
       <div class="sel-row">
-        <span>{selectedCount} di {folder.length} selezionate</span>
+        <span>{t('bulk.selectedOf', { count: selectedCount, total: folder.length })}</span>
         <div class="grow"></div>
-        <button onclick={selectAll}>Tutte</button>
-        <button onclick={selectNone}>Nessuna</button>
-        <button onclick={invertSelection}>Inverti</button>
+        <button onclick={selectAll}>{t('bulk.all')}</button>
+        <button onclick={selectNone}>{t('bulk.none')}</button>
+        <button onclick={invertSelection}>{t('bulk.invert')}</button>
       </div>
 
       <p class="hint">
-        Copia dall’immagine corrente
-        {#if activePath}(<strong>{activePath.split('/').pop()}</strong>){/if}
-        alle selezionate: palette, intervallo, parametri termici, allineamento ed
-        etichette.
+        {activePath
+          ? t('bulk.copyHint', { name: activePath.split('/').pop() ?? activePath })
+          : t('bulk.copyHintNoName')}
       </p>
 
       <fieldset class="area-modes" disabled={!rois.length}>
-        <legend>Aree</legend>
+        <legend>{t('bulk.areas')}</legend>
         <label>
           <input type="radio" name="bulkArea" value="none" bind:group={areaMode} />
-          <span><strong>Lascia invariate</strong><small>Le aree di ogni immagine restano come sono.</small></span>
+          <span><strong>{t('bulk.areaNone')}</strong><small>{t('bulk.areaNoneDesc')}</small></span>
         </label>
         <label>
           <input type="radio" name="bulkArea" value="appearance" bind:group={areaMode} />
-          <span><strong>Uniforma l’aspetto</strong><small>Colore ed emissività delle aree con lo stesso nome vengono allineati a quelli correnti. Posizione e forma restano di ogni foto; le temperature possono cambiare se cambia l’emissività.</small></span>
+          <span><strong>{t('bulk.areaAppearance')}</strong><small>{t('bulk.areaAppearanceDesc')}</small></span>
         </label>
         <label>
           <input type="radio" name="bulkArea" value="replace" bind:group={areaMode} />
-          <span><strong>Sostituisci</strong><small>Le aree correnti, posizioni incluse, rimpiazzano quelle di ogni immagine.</small></span>
+          <span><strong>{t('bulk.areaReplace')}</strong><small>{t('bulk.areaReplaceDesc')}</small></span>
         </label>
       </fieldset>
       {#if !rois.length}
-        <p class="hint">L’immagine corrente non ha aree: le opzioni sopra sono disattivate.</p>
+        <p class="hint">{t('bulk.noAreas')}</p>
       {/if}
     </div>
     <footer>
-      <button onclick={() => (bulkOpen = false)}>Annulla</button>
+      <button onclick={() => (bulkOpen = false)}>{t('bulk.cancel')}</button>
       <button
         class="primary"
         disabled={!activePath || selectedCount === 0}
         onclick={() => { applyToSelected(); bulkOpen = false; }}
       >
-        Applica a {selectedCount} {selectedCount === 1 ? 'immagine' : 'immagini'}
+        {t('bulk.apply', { count: selectedCount })}
       </button>
     </footer>
   </div>
@@ -1841,6 +1870,14 @@
   .topbar > button {
     flex: none; padding: 6px 12px; font-size: 13px;
   }
+  .privacy-btn {
+    flex: none; display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 10px; font-size: 12px;
+    background: var(--panel); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 6px; cursor: pointer;
+  }
+  .privacy-btn:hover { color: var(--text); border-color: var(--accent); }
+  .privacy-btn svg { flex: none; }
   .topbar .icon {
     width: 30px; height: 30px; padding: 0; border-radius: 999px;
     display: grid; place-items: center; font-size: 14px;
@@ -2075,17 +2112,18 @@
   .pane { position: absolute; inset: 0; }
   .pane.hidden { visibility: hidden; pointer-events: none; }
 
-  .viewswitch {
+  .viewswitch, .langswitch {
     flex: none; display: inline-flex; gap: 2px; padding: 2px;
     background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
   }
-  .viewswitch button {
+  .viewswitch button, .langswitch button {
     display: inline-flex; align-items: center; gap: 6px;
     background: transparent; border: 0; border-radius: 6px;
     padding: 5px 12px; font-size: 12px; color: var(--muted);
   }
-  .viewswitch button:hover:not(.on) { color: var(--text); }
-  .viewswitch button.on { background: var(--accent); color: var(--on-accent); }
+  .langswitch button { padding: 5px 8px; font-variant-numeric: tabular-nums; }
+  .viewswitch button:hover:not(.on), .langswitch button:hover:not(.on) { color: var(--text); }
+  .viewswitch button.on, .langswitch button.on { background: var(--accent); color: var(--on-accent); }
   .viewswitch .badge {
     font-size: 11px; font-variant-numeric: tabular-nums;
     padding: 0 5px; border-radius: 999px; line-height: 1.5;

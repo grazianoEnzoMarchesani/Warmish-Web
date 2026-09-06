@@ -1,17 +1,19 @@
 <script lang="ts">
   import { dialog } from './dialog';
+  import { t } from './i18n.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
 
+  // [translation key for the key-combo, translation key for the description]
   const shortcuts: [string, string][] = [
-    ['← / →', 'Immagine precedente / successiva (cartella aperta)'],
-    ['F', 'Mostra o nascondi la striscia'],
-    ['M', 'Alterna vista termica e mappa'],
-    ['Rotella', 'Zoom sul punto del cursore'],
-    ['Trascina', 'Sposta la vista (pan)'],
-    ['Esc', 'Annulla lo strumento in corso / deseleziona'],
-    ['Canc', 'Elimina l’area selezionata'],
-    ['Doppio clic o Invio', 'Chiudi il poligono in disegno'],
+    ['help.keyPrevNext', 'help.scPrevNext'],
+    ['help.keyFilmstrip', 'help.scFilmstrip'],
+    ['help.keyMap', 'help.scMap'],
+    ['help.keyWheel', 'help.scWheel'],
+    ['help.keyDrag', 'help.scDrag'],
+    ['help.keyEsc', 'help.scEsc'],
+    ['help.keyDelete', 'help.scDelete'],
+    ['help.keyClosePoly', 'help.scClosePoly'],
   ];
 
   function onKey(ev: KeyboardEvent) {
@@ -22,46 +24,28 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="backdrop">
-  <button type="button" class="scrim" aria-label="Chiudi" onclick={onclose}></button>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Aiuto e scorciatoie" tabindex="-1" use:dialog>
+  <button type="button" class="scrim" aria-label={t('help.close')} onclick={onclose}></button>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={t('help.title')} tabindex="-1" use:dialog>
     <header>
-      <h2>Aiuto e scorciatoie</h2>
-      <button class="x" onclick={onclose} aria-label="Chiudi">×</button>
+      <h2>{t('help.title')}</h2>
+      <button class="x" onclick={onclose} aria-label={t('help.close')}>×</button>
     </header>
     <div class="body">
-      <h3>Cos’è Warmish Web</h3>
-      <p>
-        Editor per foto termiche radiometriche FLIR. Rimappa la palette, corregge
-        i parametri di calibrazione, misura aree e temperature ed esporta le
-        immagini pronte — una alla volta, in blocco o per cartelle.
-        Tutta l’elaborazione avviene nel browser: nessun file viene caricato
-        online. L’unica eccezione è la vista mappa, che scarica le mattonelle
-        della cartografia da un provider esterno.
-      </p>
+      <h3>{t('help.whatTitle')}</h3>
+      <p>{t('help.whatBody')}</p>
 
-      <h3>Scorciatoie da tastiera</h3>
+      <h3>{t('help.shortcutsTitle')}</h3>
       <table>
         <tbody>
-          {#each shortcuts as [key, what] (key)}
-            <tr><th>{key}</th><td>{what}</td></tr>
+          {#each shortcuts as [keyK, whatK] (keyK)}
+            <tr><th>{t(keyK)}</th><td>{t(whatK)}</td></tr>
           {/each}
         </tbody>
       </table>
 
-      <h3>Esportazione</h3>
-      <p>
-        Lo ZIP di una immagine contiene la termica pulita, la termica annotata,
-        la foto visibile e — se l’hai attivata — la sovrapposta, più
-        <code>aree.csv</code> e la sessione <code>.json</code>.
-        «Includi gli originali» aggiunge le foto FLIR di partenza (lo ZIP diventa
-        molto più grande, ma il lavoro si riapre ovunque).
-      </p>
-      <p>
-        «Salva sessione» esporta solo il <code>.json</code>: un checkpoint
-        leggero che riapri trascinandolo sull’immagine, o sulla cartella. Per
-        allineare palette, parametri o aree su più foto usa «Applica
-        impostazioni» nella striscia.
-      </p>
+      <h3>{t('help.exportTitle')}</h3>
+      <p>{t('help.exportBody1')}</p>
+      <p>{t('help.exportBody2')}</p>
     </div>
   </div>
 </div>

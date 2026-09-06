@@ -1,16 +1,17 @@
 <script lang="ts">
   import { toasts, dismiss } from './toast.svelte';
+  import { t } from './i18n.svelte';
 </script>
 
-<div class="toasts" role="region" aria-label="Notifiche">
-  {#each toasts as t (t.id)}
-    <div class="toast {t.kind}" role={t.kind === 'error' ? 'alert' : 'status'}>
-      <p class="msg">{t.message}</p>
-      {#if t.progress}
-        <progress value={t.progress.done} max={t.progress.total}></progress>
+<div class="toasts" role="region" aria-label={t('toasts.region')}>
+  {#each toasts as item (item.id)}
+    <div class="toast {item.kind}" role={item.kind === 'error' ? 'alert' : 'status'}>
+      <p class="msg">{item.message}</p>
+      {#if item.progress}
+        <progress value={item.progress.done} max={item.progress.total}></progress>
       {/if}
-      {#if t.kind !== 'progress'}
-        <button class="x" onclick={() => dismiss(t.id)} aria-label="Chiudi notifica">×</button>
+      {#if item.kind !== 'progress'}
+        <button class="x" onclick={() => dismiss(item.id)} aria-label={t('toasts.dismiss')}>×</button>
       {/if}
     </div>
   {/each}

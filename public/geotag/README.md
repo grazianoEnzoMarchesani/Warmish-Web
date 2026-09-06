@@ -68,4 +68,7 @@ In `lib/` (nessuna CDN): [Leaflet](https://leafletjs.com) 1.9.4,
 [piexifjs](https://github.com/hMatoba/piexifjs) 1.0.6,
 [fflate](https://github.com/101arrowz/fflate) 0.8.2. I tasselli della mappa
 (Esri / OpenStreetMap) sono l'unica cosa che richiede rete — come la vista Mappa
-dell'app.
+dell'app, e come quella sono dietro consenso: finché la voce `warmish.mapConsent`
+in `localStorage` (condivisa con l'app, stessa origine) non vale `granted`, non
+viene creato alcun layer di tasselli e al posto della mappa compare un pannello
+di consenso con un link all'informativa (`../#privacy`).

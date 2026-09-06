@@ -22,7 +22,9 @@
    * Positions GPS-tagged FLIR frames on a slippy map. This is the only part of
    * Warmish that touches the network: the basemap tiles come from OpenFreeMap,
    * Esri or OpenStreetMap, so the area on screen is revealed to that provider.
-   * No image or coordinate is uploaded — the notice below says so, once.
+   * No image or coordinate is uploaded. Leaflet is not even instantiated until
+   * the visitor grants tile consent (see `consent.svelte.ts`); until then the
+   * `.consent` gate stands in for the map and nothing leaves the browser.
    *
    * The default "Minimal" basemap is drawn here from OpenFreeMap vector tiles
    * (protomaps-leaflet, canvas, no WebGL): only buildings, roads and water, no
@@ -36,12 +38,15 @@
   import 'leaflet/dist/leaflet.css';
   import type * as PM from 'protomaps-leaflet';
   import { routeAroundBuildings } from './routeAround';
+  import { t, getLocale } from './i18n.svelte';
+  import { mapConsent, mapTilesAllowed, setMapConsent } from './consent.svelte';
 
   let {
     points,
     onopen,
     tourImage,
     ontour,
+    onshowprivacy,
   }: {
     points: MapPoint[];
     onopen: (path: string) => void;
@@ -50,6 +55,8 @@
     /** Fires when the guided tour starts (true) and ends (false), so the shell
      *  can strip its chrome down to just the map for the fly-through. */
     ontour?: (active: boolean) => void;
+    /** Opens the privacy notice from the consent gate. */
+    onshowprivacy?: () => void;
   } = $props();
 
   let host: HTMLDivElement;
@@ -63,13 +70,7 @@
   const reduceMotion =
     typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  let noticeAck = $state(
-    (() => { try { return localStorage.getItem('warmish.mapNoticeAck') === '1'; } catch { return false; } })(),
-  );
-  function ackNotice() {
-    noticeAck = true;
-    try { localStorage.setItem('warmish.mapNoticeAck', '1'); } catch { /* private mode */ }
-  }
+  let mapRO: ResizeObserver | null = null;
 
   const OSM_ATTR = '&copy; OpenStreetMap contributors';
 
@@ -195,20 +196,21 @@
     const rows: string[] = [];
     rows.push(`<div class="wm-pop-coord">${fmtCoord(p.lat, p.lon)}</div>`);
     const meta: string[] = [];
-    if (p.altitude !== null) meta.push(`Quota ${p.altitude.toFixed(0)} m`);
+    if (p.altitude !== null) meta.push(t('map.popupAltitude', { m: p.altitude.toFixed(0) }));
     if (p.direction !== null) {
-      meta.push(`Direzione ${p.direction.toFixed(0)}°${p.directionRef === 'M' ? ' (mag.)' : p.directionRef === 'T' ? ' (vero)' : ''}`);
+      const dref = p.directionRef === 'M' ? t('map.popupDirectionMag') : p.directionRef === 'T' ? t('map.popupDirectionTrue') : '';
+      meta.push(t('map.popupDirection', { deg: p.direction.toFixed(0), ref: dref }));
     }
     if (meta.length) rows.push(`<div class="wm-pop-meta">${meta.join(' · ')}</div>`);
     const thumb = p.thumb
-      ? `<img class="wm-pop-thumb" src="${p.thumb}" alt="Anteprima di ${escapeHtml(p.name)}" />`
+      ? `<img class="wm-pop-thumb" src="${p.thumb}" alt="${escapeHtml(t('map.popupThumbAlt', { name: p.name }))}" />`
       : '';
     return `<div class="wm-pop">
       ${thumb}
       <div class="wm-pop-name">${escapeHtml(p.name)}</div>
       ${rows.join('')}
       <button type="button" class="wm-pop-open" data-path="${escapeHtml(p.path)}">
-        ${p.active ? 'Torna alla vista termica' : 'Apri nel visualizzatore'}
+        ${p.active ? t('map.popupBackToThermal') : t('map.popupOpenViewer')}
       </button>
     </div>`;
   }
@@ -233,7 +235,7 @@
       .map(
         (p) => `<li><button type="button" class="wm-list-open" data-path="${escapeHtml(p.path)}">
           <span class="wm-list-name">${escapeHtml(p.name)}</span>
-          ${p.active ? '<span class="wm-list-tag">in vista</span>' : ''}
+          ${p.active ? `<span class="wm-list-tag">${t('map.popupInView')}</span>` : ''}
         </button></li>`,
       )
       .join('');
@@ -241,11 +243,11 @@
     // stamps a single cached fix on a whole session, not a real cluster.
     const allHere = items.length === points.length && points.length > 1;
     const note = allHere
-      ? `<div class="wm-pop-meta">Tutte le foto con GPS hanno questa stessa coordinata — la fotocamera ha registrato una sola posizione per la sessione, non una per scatto.
-         <a class="wm-pop-link" href="geotag/index.html" target="_blank" rel="noopener">Posizionale a mano nel Geotag &rarr;</a></div>`
+      ? `<div class="wm-pop-meta">${t('map.popupSameCoord')}
+         <a class="wm-pop-link" href="geotag/index.html" target="_blank" rel="noopener">${t('map.popupSameCoordLink')}</a></div>`
       : '';
     return `<div class="wm-pop">
-      <div class="wm-pop-name">${items.length} scatti in questo punto</div>
+      <div class="wm-pop-name">${t('map.popupShotsHere', { count: items.length })}</div>
       <div class="wm-pop-coord">${fmtCoord(items[0].lat, items[0].lon)}</div>
       ${note}
       <ul class="wm-list">${list}</ul>
@@ -312,7 +314,7 @@
     try {
       Object.assign(all, await buildMinimalLayers());
     } catch (err) {
-      console.warn('Sfondo "Minimal" non disponibile, ripiego su Esri.', err);
+      console.warn(t('map.minimalUnavailable'), err);
     }
     for (const k of Object.keys(RASTER_BASEMAPS) as (keyof typeof RASTER_BASEMAPS)[]) {
       all[k] = RASTER_BASEMAPS[k]();
@@ -331,7 +333,11 @@
     renderMarkers();
   }
 
-  onMount(() => {
+  /** Stand up Leaflet and its tile layers. Only ever called once the visitor has
+   *  granted map-tile consent — this is the one path in Warmish that reaches the
+   *  network (see `consent.svelte.ts`). */
+  function buildMap(): void {
+    if (map || !host) return;
     map = L.map(host, {
       zoomControl: true,
       attributionControl: true,
@@ -358,31 +364,61 @@
     map.on('zoomend resize', () => { if (!tourActive) renderMarkers(); });
     renderMarkers();
 
-    const ro = new ResizeObserver(() => map?.invalidateSize());
-    ro.observe(host);
+    mapRO = new ResizeObserver(() => map?.invalidateSize());
+    mapRO.observe(host);
     // Container is laid out by now, but a deferred call covers font/layout settle.
     requestAnimationFrame(() => map?.invalidateSize());
+  }
 
+  /** Tear the map down completely — on unmount, or when consent is withdrawn
+   *  mid-session, so no further tile request can leave the browser. */
+  function destroyMap(): void {
+    if (!map) return;
+    if (tourActive) {
+      tourGen++;
+      detourGen++;
+      clearTourTimers();
+      tourActive = tourPlaying = tourMoving = false;
+      routeLine?.remove(); doneLine?.remove(); doneBlocked?.remove(); traveller?.remove();
+      routeLine = doneLine = doneBlocked = traveller = null;
+      segPaths = [];
+      segClear = [];
+      imgLayers = [];
+      imgLoading = false;
+      ontour?.(false);
+    }
+    for (const url of urlCache.values()) URL.revokeObjectURL(url);
+    urlCache.clear();
+    mapRO?.disconnect();
+    mapRO = null;
+    try { map.remove(); } catch { /* Svelte may have already detached the container */ }
+    map = null;
+    markerLayer = null;
+    fittedOnce = false;
+  }
+
+  onMount(() => {
     // Capture phase so tour keys (Space, arrows, Esc) beat the app's global
     // shortcuts (which would otherwise flip the open image or the filmstrip).
     window.addEventListener('keydown', onTourKey, true);
-
     return () => {
       window.removeEventListener('keydown', onTourKey, true);
-      if (tourActive) ontour?.(false);
-      clearTourTimers();
-      for (const url of urlCache.values()) URL.revokeObjectURL(url);
-      urlCache.clear();
-      ro.disconnect();
-      map?.remove();
-      map = null;
-      markerLayer = null;
+      destroyMap();
     };
   });
 
-  // Re-place markers when the folder selection or the active image changes.
+  // Build the map the moment tile consent is granted; tear it right back down if
+  // the visitor withdraws it. Runs after the first render, so `host` is bound.
+  $effect(() => {
+    if (mapTilesAllowed()) buildMap();
+    else destroyMap();
+  });
+
+  // Re-place markers when the folder selection or the active image changes, or
+  // when the language switches (popup text is built imperatively).
   $effect(() => {
     void points;
+    void getLocale();
     renderMarkers();
   });
 
@@ -523,7 +559,7 @@
       routeLine?.setLatLngs(fullRoute());
       if (!tourMoving) paintDone(tourIdx);
     } catch (err) {
-      console.warn('Percorso attorno agli edifici non disponibile.', err);
+      console.warn(t('map.routeUnavailable'), err);
     }
   }
 
@@ -540,7 +576,7 @@
   function fmtStopTime(ms: number | null): string {
     if (ms === null) return '';
     try {
-      return new Date(ms).toLocaleString('it-IT', {
+      return new Date(ms).toLocaleString(getLocale(), {
         day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
       });
     } catch { return ''; }
@@ -817,24 +853,25 @@
 </script>
 
 <div class="wrap" class:touring={tourActive}>
+  {#if mapTilesAllowed()}
   <div class="host" bind:this={host}></div>
 
   {#if canTour && !tourActive}
-    <button class="tour-start" onclick={startTour} title="Sorvola tutte le foto in ordine di scatto">
+    <button class="tour-start" onclick={startTour} title={t('map.playTourTitle')}>
       <span class="tour-start-ico" aria-hidden="true">▶</span>
-      Riproduci il tour
+      {t('map.playTour')}
     </button>
   {/if}
 
   {#if tourActive}
     {@const cur = ordered[tourIdx]}
-    <section class="tour-panel" aria-label="Tour delle foto sulla mappa">
+    <section class="tour-panel" aria-label={t('map.tourPanel')}>
       <div class="tour-stage">
         {#each imgLayers as layer (layer.id)}
           <img
             class="tour-img"
             src={layer.src}
-            alt={`Immagine elaborata di ${cur?.name ?? ''}`}
+            alt={t('map.processedImageOf', { name: cur?.name ?? '' })}
             draggable="false"
             transition:fade={{ duration: reduceMotion ? 0 : FADE_MS }}
           />
@@ -848,18 +885,18 @@
         <div class="tour-id">
           <span class="tour-name">{cur?.name}</span>
           <span class="tour-sub">
-            {#if cur?.time != null}{fmtStopTime(cur.time)} · {/if}tappa {tourIdx + 1} / {ordered.length}
+            {#if cur?.time != null}{fmtStopTime(cur.time)} · {/if}{t('map.stopOf', { index: tourIdx + 1, total: ordered.length })}
           </span>
         </div>
 
-        <div class="tour-progress" role="group" aria-label="Avanzamento del tour">
+        <div class="tour-progress" role="group" aria-label={t('map.tourProgress')}>
           {#each ordered as p, i (p.path)}
             <button
               class="tour-dot"
               class:done={i < tourIdx}
               class:cur={i === tourIdx}
               title={p.name}
-              aria-label={`Tappa ${i + 1}: ${p.name}`}
+              aria-label={t('map.stopN', { index: i + 1, name: p.name })}
               aria-current={i === tourIdx ? 'step' : undefined}
               onclick={() => stepTo(i)}
             ></button>
@@ -868,25 +905,25 @@
 
         <div class="tour-controls">
           <button class="tour-btn" onclick={() => stepTo(tourIdx - 1)} disabled={tourIdx === 0}
-            aria-label="Tappa precedente" title="Tappa precedente (←)">&lsaquo;</button>
+            aria-label={t('map.prevStop')} title={t('map.prevStopTitle')}>&lsaquo;</button>
           <button class="tour-btn play" onclick={togglePlay}
-            aria-label={tourPlaying ? 'Pausa' : 'Riprendi'} title={tourPlaying ? 'Pausa (spazio)' : 'Riprendi (spazio)'}>
+            aria-label={tourPlaying ? t('map.pause') : t('map.resume')} title={tourPlaying ? t('map.pauseTitle') : t('map.resumeTitle')}>
             {tourPlaying ? '❙❙' : '▶'}
           </button>
           <button class="tour-btn" onclick={() => stepTo(tourIdx + 1)} disabled={tourIdx >= ordered.length - 1}
-            aria-label="Tappa successiva" title="Tappa successiva (→)">&rsaquo;</button>
+            aria-label={t('map.nextStop')} title={t('map.nextStopTitle')}>&rsaquo;</button>
           <button class="tour-btn framing" onclick={cycleFraming}
-            title="Inquadratura: campo largo / medio / stretto">
+            title={t('map.framingTitle')}>
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 8h3l1.6-2.2h6.8L17 8h3v11H4z" />
               <circle cx="12" cy="13" r="3.1" />
-            </svg>{FRAMINGS[tourFraming].label}</button>
-          <button class="tour-btn speed" onclick={cycleSpeed} title="Velocità del tour">
+            </svg>{t(`map.framing.${tourFraming}`)}</button>
+          <button class="tour-btn speed" onclick={cycleSpeed} title={t('map.speedTitle')}>
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M3 17.6c0-2.5 2-4.3 4.8-4.3.9 0 1.7.2 2.3.5.5-1.3 1.6-2.4 3.1-3-.6-1.3-1.1-3.2-1.1-5.4 0-1.9.5-3 1.2-3 .8 0 1.6 1.2 2.1 3.1.4 1.4.5 2.8.5 3.8.8-.2 1.5-.2 2.2 0 1.6.5 2.7 1.6 2.7 2.9 0 1-.7 1.7-1.8 1.9-.6.1-1.2.1-1.9 0 .2.5.3 1 .3 1.5 0 1.9-1.6 3.4-4 3.4H7.2C4.8 21.9 3 20.1 3 17.6Z" />
-            </svg>{tourSpeed}</button>
-          <button class="tour-btn close" onclick={endTour} aria-label="Esci dal tour" title="Esci (Esc)">✕</button>
+            </svg>{t(`map.speed.${tourSpeed}`)}</button>
+          <button class="tour-btn close" onclick={endTour} aria-label={t('map.exitTour')} title={t('map.exitTourTitle')}>✕</button>
         </div>
       </div>
     </section>
@@ -894,21 +931,31 @@
 
   {#if !points.length}
     <div class="empty">
-      <p>Nessuna coordinata GPS</p>
-      <small>Le foto aperte non contengono un tag GPS negli EXIF, quindi non c'&egrave; nulla da posizionare.</small>
-      <a class="empty-link" href="geotag/index.html" target="_blank" rel="noopener">Aprile nel Geotag per posizionarle a mano &rarr;</a>
+      <p>{t('map.noGps')}</p>
+      <small>{t('map.noGpsBody')}</small>
+      <a class="empty-link" href="geotag/index.html" target="_blank" rel="noopener">{t('map.noGpsLink')}</a>
     </div>
   {/if}
-
-  {#if !noticeAck}
-    <div class="notice" role="status">
-      <p>
-        La mappa scarica lo sfondo cartografico da un server esterno
-        (OpenFreeMap&nbsp;/&nbsp;Esri&nbsp;/&nbsp;OpenStreetMap). &Egrave; l'unica funzione dell'app che
-        si collega a internet: la zona che visualizzi viene rivelata al fornitore
-        delle mappe. Nessuna immagine o coordinata lascia il tuo computer.
-      </p>
-      <button type="button" onclick={ackNotice}>Ho capito</button>
+  {:else}
+    <div class="consent" role="group" aria-label={t('map.consentTitle')}>
+      <div class="consent-card">
+        <h2>{t('map.consentTitle')}</h2>
+        {#if mapConsent() === 'denied'}
+          <p>{t('map.consentDeniedBody')}</p>
+          <div class="consent-actions">
+            <button type="button" class="primary" onclick={() => setMapConsent('granted')}>{t('map.consentEnable')}</button>
+          </div>
+        {:else}
+          <p>{t('map.consentBody')}</p>
+          <div class="consent-actions">
+            <button type="button" class="primary" onclick={() => setMapConsent('granted')}>{t('map.consentAccept')}</button>
+            <button type="button" onclick={() => setMapConsent('denied')}>{t('map.consentDecline')}</button>
+          </div>
+        {/if}
+        {#if onshowprivacy}
+          <button type="button" class="consent-link" onclick={onshowprivacy}>{t('map.consentPrivacyLink')}</button>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
@@ -934,16 +981,36 @@
   }
   .empty-link:hover { text-decoration: underline; }
 
-  .notice {
-    position: absolute; left: 12px; bottom: 12px; z-index: 500;
-    max-width: min(520px, calc(100% - 24px));
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--panel); backdrop-filter: blur(6px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  /* Consent gate — shown instead of the map until tile downloads are allowed.
+     Below the app's modals (PrivacyModal is 1000) so its "privacy notice" link
+     opens a dialog that sits on top. */
+  .consent {
+    position: absolute; inset: 0; z-index: 450;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: var(--bg);
   }
-  .notice p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-  .notice button { flex: none; padding: 6px 12px; font-size: 12px; }
+  .consent-card {
+    max-width: 420px; display: flex; flex-direction: column; gap: 10px;
+    padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .consent-card h2 { margin: 0; font-size: 13px; }
+  .consent-card p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+  .consent-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+  .consent-actions button {
+    padding: 7px 14px; font-size: 12.5px;
+    background: var(--input-bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
+  }
+  .consent-actions button:hover { border-color: var(--accent); }
+  .consent-actions button.primary {
+    background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600;
+  }
+  .consent-link {
+    align-self: flex-start; margin-top: 2px; padding: 0;
+    background: none; border: 0; cursor: pointer;
+    font-size: 11.5px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .host { animation: none; }

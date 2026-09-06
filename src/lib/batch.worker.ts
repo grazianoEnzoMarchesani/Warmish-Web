@@ -11,6 +11,7 @@ import { zipSync, type Zippable } from 'fflate';
 
 import { processImage, DECORATED_LONG_EDGE, type RenderSettings } from '../core/pipeline';
 import { buildAreeCsv, buildManifest, buildGeojson, type AreaRow, type GeoPoint, type ManifestImage } from '../core/report';
+import { translate, type Locale } from './i18n';
 
 export interface BatchRequest {
   files: File[];
@@ -21,6 +22,8 @@ export interface BatchRequest {
   /** `YYYY-MM-DD`, names the zip's root folder. */
   exportDate: string;
   warmishVersion: string;
+  /** UI language, for the human-readable text in the archive. */
+  lang: Locale;
 }
 
 export type BatchMessage =
@@ -32,7 +35,7 @@ const scope = self as unknown as { postMessage(m: BatchMessage, transfer?: Trans
 const post = (m: BatchMessage, transfer: Transferable[] = []) => scope.postMessage(m, transfer);
 
 self.onmessage = async (ev: MessageEvent<BatchRequest>) => {
-  const { files, settings, perFile, includeOriginals, exportDate, warmishVersion } = ev.data;
+  const { files, settings, perFile, includeOriginals, exportDate, warmishVersion, lang } = ev.data;
   const root = `warmish_export_${exportDate}`;
   const entries: Zippable = {};
   const failures: { name: string; message: string }[] = [];
@@ -108,8 +111,7 @@ self.onmessage = async (ev: MessageEvent<BatchRequest>) => {
     }
     if (!includeOriginals) {
       entries[`${root}/originali/NOTA.txt`] = new TextEncoder().encode(
-        'Le sessioni .json qui accanto vanno riaperte insieme alle immagini FLIR di partenza,\n'
-        + 'che non sono state incluse in questo export.\n',
+        translate(lang, 'exportFiles.originalsNote'),
       );
     }
     if (failures.length) {

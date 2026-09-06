@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n.svelte';
   /**
    * DOM colour scale on the right edge of the canvas: palette gradient, a
    * histogram of the frame's temperatures, and two draggable handles for the
@@ -35,13 +36,13 @@
 
   const STRETCH_PRESETS = [90, 95, 98, 99];
 
-  /** Label on the mode pill: MANUALE, AUTO, a percentage, or the folder scale. */
+  /** Label on the mode pill: manual, auto, a percentage, or the folder scale. */
   const modeLabel = $derived(
     scanning ? '…'
-    : !auto ? 'manuale'
-    : folderMode ? 'cart.'
+    : !auto ? t('scale.modeManual')
+    : folderMode ? t('scale.modeFolder')
     : stretchPct > 0 ? `${+stretchPct.toFixed(1)}%`
-    : 'auto',
+    : t('scale.modeAuto'),
   );
   /** The window clips the histogram's tails — draw guide lines where. */
   const clipped = $derived(auto && (folderMode || stretchPct > 0));
@@ -136,7 +137,7 @@
 
 <svelte:window onpointerdown={() => (showPct = false)} />
 
-<div class="scale" ondblclick={() => onauto()} role="group" aria-label="Scala e intervallo temperatura">
+<div class="scale" ondblclick={() => onauto()} role="group" aria-label={t('scale.group')}>
   <div class="col">
     <div class="modewrap">
       <button
@@ -147,11 +148,11 @@
         onpointerup={pillUp}
         onpointerleave={pillUp}
         title={
-          scanning ? 'Scansione della cartella…'
-          : !auto ? 'Intervallo manuale — clic per tornare automatico'
-          : folderMode ? 'Scala comune a tutta la cartella — clic per cambiare'
-          : stretchPct > 0 ? `Stretch percentile ${modeLabel} — clic per cambiare, tieni premuto per un valore preciso`
-          : 'Min/Max reali — clic per lo stretch percentile, tieni premuto per le opzioni'
+          scanning ? t('scale.pillScan')
+          : !auto ? t('scale.pillManual')
+          : folderMode ? t('scale.pillFolder')
+          : stretchPct > 0 ? t('scale.pillStretch', { mode: modeLabel })
+          : t('scale.pillReal')
         }
       >{modeLabel}</button>
 
@@ -159,10 +160,10 @@
         <div
           class="pctpop"
           role="group"
-          aria-label="Modalità intervallo automatico"
+          aria-label={t('scale.pctGroup')}
           onpointerdown={(e) => e.stopPropagation()}
         >
-          <span class="pcttitle">Mantieni il {stretchPct > 0 ? +stretchPct.toFixed(1) : 98}% centrale</span>
+          <span class="pcttitle">{t('scale.pctTitle', { pct: stretchPct > 0 ? +stretchPct.toFixed(1) : 98 })}</span>
           <input
             class="pctrange"
             type="range" min="50" max="99.8" step="0.2"
@@ -173,14 +174,14 @@
             {#each STRETCH_PRESETS as p}
               <button class:on={!folderMode && Math.abs(stretchPct - p) < 0.05} onclick={() => onstretch(p)}>{p}%</button>
             {/each}
-            <button class:on={!folderMode && stretchPct === 0} onclick={() => { onauto(); showPct = false; }}>reali</button>
+            <button class:on={!folderMode && stretchPct === 0} onclick={() => { onauto(); showPct = false; }}>{t('scale.pctReal')}</button>
           </div>
           {#if folderAvailable}
             <button
               class="pctfolder"
               class:on={folderMode}
               onclick={() => { onfolder(); showPct = false; }}
-            >Scala comune alla cartella</button>
+            >{t('scale.pctFolder')}</button>
           {/if}
         </div>
       {/if}
@@ -205,7 +206,7 @@
         style="top:{vToY(max)}px"
         role="slider"
         tabindex="0"
-        aria-label="Temperatura massima visualizzata"
+        aria-label={t('scale.maxHandle')}
         aria-valuemin={dataMin}
         aria-valuemax={dataMax}
         aria-valuenow={max}
@@ -222,7 +223,7 @@
         style="top:{vToY(min)}px"
         role="slider"
         tabindex="0"
-        aria-label="Temperatura minima visualizzata"
+        aria-label={t('scale.minHandle')}
         aria-valuemin={dataMin}
         aria-valuemax={dataMax}
         aria-valuenow={min}

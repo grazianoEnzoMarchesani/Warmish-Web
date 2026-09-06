@@ -55,6 +55,14 @@ try {
   await page.goto(`http://localhost:${PORT}/`);
   check('app mounts', await page.locator('h1', { hasText: 'Warmish' }).isVisible());
 
+  // The map-tile consent banner shows on every startup until accepted. Accept it
+  // here so it stays out of the way (and persists across the reloads below); the
+  // map section then withdraws consent to exercise the in-place gate.
+  check('consent banner shows on startup', await page.locator('.banner').isVisible());
+  await page.locator('.banner .actions button.primary').click();
+  await page.waitForSelector('.banner', { state: 'detached', timeout: 3000 });
+  check('accepting from the banner dismisses it', true);
+
   await page.setInputFiles('#pick', SAMPLE);
   await page.waitForSelector('[role="tablist"]', { timeout: 10_000 });
   check('image parsed in-browser', true);
@@ -383,11 +391,27 @@ try {
   check('folder scale resets with the rest of the auto modes',
     (await fpill.textContent())?.trim() === 'auto');
 
+  // --- Map-tile consent gate --------------------------------------------
+  // Withdraw consent from the privacy notice (reached via the top-bar padlock),
+  // then open the map: it must show the in-place gate and NOT instantiate Leaflet
+  // (no tile request can leave the browser). Re-enabling builds the map; the
+  // choice is then shared with the geotag tool below.
+  await page.locator('.privacy-btn').click();
+  await page.waitForSelector('[role="dialog"]');
+  await page.locator('.prefs-row button', { hasText: /Disattiva|Disable/ }).click();
+  await page.keyboard.press('Escape');
+  await page.locator('.viewswitch button', { hasText: 'Mappa' }).click();
+  await page.waitForSelector('.consent', { timeout: 5000 });
+  check('map is gated after consent is withdrawn',
+    (await page.locator('.consent').isVisible()) && (await page.locator('.leaflet-container').count()) === 0);
+  await page.locator('.consent-actions button.primary').click();
+  await page.waitForSelector('.leaflet-container', { timeout: 10_000 });
+  check('re-enabling builds the map', (await page.locator('.consent').count()) === 0);
+
   // --- Map view -----------------------------------------------------------
   // The folder (two shots ~11 m apart, the coarse fix a FLIR writes) is still
   // open: they must merge into one counted cluster that splits when zoomed in.
-  await page.locator('.viewswitch button', { hasText: 'Mappa' }).click();
-  await page.waitForSelector('.leaflet-container', { timeout: 10_000 });
+  await page.waitForTimeout(400);
   await page.waitForTimeout(600);
   check('near shots merge into one cluster',
     (await page.locator('.wm-pin--cluster').count()) === 1

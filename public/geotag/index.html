@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Warmish Geotag — posiziona le foto a mano</title>
+<title data-i18n="title">Warmish Geotag — posiziona le foto a mano</title>
 <link rel="stylesheet" href="lib/leaflet.css" />
 <style>
   :root {
@@ -25,6 +25,10 @@
   }
   button:hover:not(:disabled), .btn:hover { border-color: var(--accent); }
   button:disabled { opacity: 0.45; cursor: default; }
+  .lang { position: absolute; top: 14px; right: 40px; display: inline-flex; gap: 2px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 2px; }
+  .lang button { padding: 3px 7px; font-size: 11px; border: 0; background: transparent; color: var(--muted); border-radius: 5px; }
+  .lang button.on { background: var(--accent); color: #101216; }
   .vh {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -149,6 +153,31 @@
     align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 24px;
   }
 
+  /* Map-tile consent gate — shown instead of the map until downloads are allowed.
+     Mirrors the main app's gate (src/lib/MapView.svelte). */
+  .consent-gate {
+    position: absolute; inset: 0; z-index: 600; background: #0d0f13;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .consent-gate .gate-card {
+    max-width: 420px; display: flex; flex-direction: column; gap: 10px;
+    padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel); box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+  .consent-gate h2 { margin: 0; font-size: 13px; }
+  .consent-gate p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+  .consent-gate .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+  .consent-gate .actions button { padding: 7px 14px; font-size: 12.5px; }
+  .consent-gate .actions button.primary { font-weight: 600; }
+  .consent-gate a { align-self: flex-start; font-size: 11.5px; color: var(--accent); }
+  .consent-pill {
+    position: absolute; right: 12px; bottom: 34px; z-index: 550;
+    padding: 5px 11px; font-size: 11px; border-radius: 999px;
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    text-decoration: none; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .consent-pill:hover { color: var(--text); border-color: var(--accent); }
+
   /* Leaflet dark */
   .leaflet-container { background: #0d0f13; font: inherit; }
   .leaflet-bar, .leaflet-control-layers { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -175,20 +204,24 @@
   <aside class="left">
     <header>
       <h1>Warmish <span>Geotag</span></h1>
-      <div class="sub">Posiziona a mano le foto FLIR/JPEG su una mappa e riscrivi le coordinate GPS negli EXIF. I dati termici non vengono toccati. Gli originali non vengono sovrascritti — l'output è uno ZIP.</div>
-      <button class="panel-toggle" id="collapseLeft" title="Comprimi il pannello" aria-label="Comprimi il pannello sinistro">‹</button>
+      <div class="sub" data-i18n="sub">Posiziona a mano le foto FLIR/JPEG su una mappa e riscrivi le coordinate GPS negli EXIF. I dati termici non vengono toccati. Gli originali non vengono sovrascritti — l'output è uno ZIP.</div>
+      <div class="lang" role="group" data-i18n-aria="langLabel" aria-label="Lingua">
+        <button type="button" data-lang="it">IT</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <button class="panel-toggle" id="collapseLeft" data-i18n-title="collapsePanel" data-i18n-aria="collapseLeft" title="Comprimi il pannello" aria-label="Comprimi il pannello sinistro">‹</button>
     </header>
 
     <div class="load">
       <div class="row">
-        <label class="btn" for="fileInput">Scegli foto…</label>
-        <label class="btn" for="folderInput">Scegli cartella…</label>
+        <label class="btn" for="fileInput" data-i18n="choosePhotos">Scegli foto…</label>
+        <label class="btn" for="folderInput" data-i18n="chooseFolder">Scegli cartella…</label>
       </div>
       <input id="fileInput" type="file" accept="image/jpeg,.jpg,.jpeg" multiple class="vh" />
       <input id="folderInput" type="file" webkitdirectory multiple class="vh" />
       <div class="row">
-        <label class="btn" for="workInput" title="Riapri un lavoro salvato">Importa lavoro…</label>
-        <button id="exportWork" title="Salva le posizioni assegnate finora">Esporta lavoro</button>
+        <label class="btn" for="workInput" data-i18n="importWork" data-i18n-title="importWorkTitle" title="Riapri un lavoro salvato">Importa lavoro…</label>
+        <button id="exportWork" data-i18n="exportWork" data-i18n-title="exportWorkTitle" title="Salva le posizioni assegnate finora">Esporta lavoro</button>
         <input id="workInput" type="file" accept=".json" class="vh" />
       </div>
     </div>
@@ -196,7 +229,7 @@
     <div class="strip" id="strip"></div>
 
     <div class="export">
-      <button class="primary" id="exportZip" disabled>Scarica ZIP geotaggato</button>
+      <button class="primary" id="exportZip" data-i18n="downloadZip" disabled>Scarica ZIP geotaggato</button>
       <div class="status" id="status"></div>
     </div>
   </aside>
@@ -204,24 +237,24 @@
   <main>
     <div id="map"></div>
     <div class="empty-state" id="emptyState">
-      <p>Carica delle foto per iniziare.</p>
-      <small>Solo JPEG. Tutto avviene nel browser.</small>
+      <p data-i18n="loadToStart">Carica delle foto per iniziare.</p>
+      <small data-i18n="jpegOnly">Solo JPEG. Tutto avviene nel browser.</small>
     </div>
     <div class="maphint" id="mapHint" hidden>
-      <b>Clic</b> sulla mappa = posiziona la foto selezionata. Trascina il pallino per spostarlo.<br />
-      <b>Shift+clic</b> (o <b>clic destro</b>) su un punto = orienta la foto verso quel punto. La direzione si può anche digitare nel pannello a destra.<br />
-      Il cerchietto tratteggiato è la posizione originale della fotocamera.
-      <br /><button id="hideHint">Nascondi</button>
+      <span data-i18n-html="hintClick"><b>Clic</b> sulla mappa = posiziona la foto selezionata. Trascina il pallino per spostarlo.</span><br />
+      <span data-i18n-html="hintShift"><b>Shift+clic</b> (o <b>clic destro</b>) su un punto = orienta la foto verso quel punto. La direzione si può anche digitare nel pannello a destra.</span><br />
+      <span data-i18n="hintGhost">Il cerchietto tratteggiato è la posizione originale della fotocamera.</span>
+      <br /><button id="hideHint" data-i18n="hide">Nascondi</button>
     </div>
-    <button class="reveal reveal-left" id="showLeft" title="Mostra il pannello sinistro" aria-label="Mostra il pannello sinistro" hidden>›</button>
-    <button class="reveal reveal-right" id="showRight" title="Mostra il pannello destro" aria-label="Mostra il pannello destro" hidden>‹</button>
+    <button class="reveal reveal-left" id="showLeft" data-i18n-title="showLeft" data-i18n-aria="showLeft" title="Mostra il pannello sinistro" aria-label="Mostra il pannello sinistro" hidden>›</button>
+    <button class="reveal reveal-right" id="showRight" data-i18n-title="showRight" data-i18n-aria="showRight" title="Mostra il pannello destro" aria-label="Mostra il pannello destro" hidden>‹</button>
   </main>
 
   <aside class="right">
-    <div class="rhead">Anteprima e coordinate
-      <button class="panel-toggle" id="collapseRight" title="Comprimi il pannello" aria-label="Comprimi il pannello destro">›</button>
+    <div class="rhead"><span data-i18n="previewAndCoords">Anteprima e coordinate</span>
+      <button class="panel-toggle" id="collapseRight" data-i18n-title="collapsePanel" data-i18n-aria="collapseRight" title="Comprimi il pannello" aria-label="Comprimi il pannello destro">›</button>
     </div>
-    <div class="detail empty" id="detail">Nessuna foto selezionata.</div>
+    <div class="detail empty" id="detail" data-i18n="noPhotoSelected">Nessuna foto selezionata.</div>
   </aside>
 </div>
 
@@ -230,6 +263,165 @@
 <script src="lib/fflate.js"></script>
 <script>
 "use strict";
+
+// ---------------------------------------------------------------- i18n
+// Standalone tool: no build step, so this is a tiny self-contained dictionary.
+// The language is shared with the main app via localStorage["warmish.lang"]
+// (same origin); the IT/EN switch in the header writes it back and reloads.
+const I18N = {
+  it: {
+    title: "Warmish Geotag — posiziona le foto a mano",
+    sub: "Posiziona a mano le foto FLIR/JPEG su una mappa e riscrivi le coordinate GPS negli EXIF. I dati termici non vengono toccati. Gli originali non vengono sovrascritti — l'output è uno ZIP.",
+    langLabel: "Lingua",
+    collapsePanel: "Comprimi il pannello",
+    collapseLeft: "Comprimi il pannello sinistro",
+    collapseRight: "Comprimi il pannello destro",
+    showLeft: "Mostra il pannello sinistro",
+    showRight: "Mostra il pannello destro",
+    choosePhotos: "Scegli foto…",
+    chooseFolder: "Scegli cartella…",
+    importWork: "Importa lavoro…",
+    importWorkTitle: "Riapri un lavoro salvato",
+    exportWork: "Esporta lavoro",
+    exportWorkTitle: "Salva le posizioni assegnate finora",
+    downloadZip: "Scarica ZIP geotaggato",
+    loadToStart: "Carica delle foto per iniziare.",
+    jpegOnly: "Solo JPEG. Tutto avviene nel browser.",
+    hintClick: "<b>Clic</b> sulla mappa = posiziona la foto selezionata. Trascina il pallino per spostarlo.",
+    hintShift: "<b>Shift+clic</b> (o <b>clic destro</b>) su un punto = orienta la foto verso quel punto. La direzione si può anche digitare nel pannello a destra.",
+    hintGhost: "Il cerchietto tratteggiato è la posizione originale della fotocamera.",
+    hide: "Nascondi",
+    previewAndCoords: "Anteprima e coordinate",
+    noPhotoSelected: "Nessuna foto selezionata.",
+    basemapSat: "Satellite",
+    basemapStreet: "Mappa stradale",
+    consentTitle: "Sfondo cartografico",
+    consentBody: "Per disegnare la mappa il browser deve scaricare le mattonelle della cartografia da un fornitore esterno (Esri o OpenStreetMap). È l'unica funzione che si collega a internet: il fornitore riceve il tuo indirizzo IP e l'area che stai guardando. Nessuna foto, coordinata o dato EXIF lascia il tuo dispositivo.",
+    consentAccept: "Attiva la mappa",
+    consentDecline: "Non ora",
+    consentDenied: "Hai scelto di non caricare lo sfondo cartografico. Per posizionare le foto a mano serve la mappa: puoi attivarla qui.",
+    consentEnable: "Attiva la mappa",
+    consentPolicy: "Informativa sulla privacy",
+    lbVisible: "foto visibile",
+    lbThermal: "anteprima termica",
+    lbClose: "Chiudi (Esc)",
+    origTooltip: "posizione originale della fotocamera",
+    noJpegFound: "Nessun JPEG trovato.",
+    loaded: "{n} foto caricate. {p} già posizionate.",
+    statePlaced: "posizionata",
+    stateOriginal: "solo posizione originale",
+    stateNone: "da posizionare",
+    capVisible: "Foto visibile incorporata nel file FLIR — clic per ingrandire.",
+    capSearching: "Cerco la foto visibile…",
+    capNone: "Il file non contiene una foto visibile: qui sotto l'anteprima termica — clic per ingrandire.",
+    fldPhoto: "Foto",
+    fldLat: "Latitudine",
+    fldLon: "Longitudine",
+    fldHeading: "Direzione (°)",
+    fldAlt: "Altitudine (m)",
+    previewOf: "Anteprima di {name}",
+    optional: "opzionale",
+    useOrig: "Usa posizione originale",
+    clearPos: "Cancella",
+    copyEmpty: "Copia posizione → foto non posizionate",
+    copyAll: "Copia posizione → tutte",
+    detailHint: "Digita lat/lon e premi Invio (o esci dal campo) per applicare. Shortcut: ↑ / ↓ per cambiare foto. Shift+clic sulla mappa per la direzione.",
+    posCopied: "Posizione copiata su {n} foto.",
+    noPhotoPlaced: "Nessuna foto posizionata.",
+    writingExif: "Scrittura EXIF… {done}/{total}",
+    compressing: "Compressione…",
+    doneReport: "Fatto: {placed} foto geotaggate, {untouched} invariate",
+    doneErrors: ", {n} errori (vedi _errori.txt)",
+    invalidFile: "file non valido",
+    workImported: "Lavoro importato: {n} foto aggiornate.",
+    importFailed: "Import fallito: ",
+  },
+  en: {
+    title: "Warmish Geotag — place photos by hand",
+    sub: "Place FLIR/JPEG photos on a map by hand and rewrite the GPS coordinates in the EXIF. The thermal data is left untouched. Originals are not overwritten — the output is a ZIP.",
+    langLabel: "Language",
+    collapsePanel: "Collapse the panel",
+    collapseLeft: "Collapse the left panel",
+    collapseRight: "Collapse the right panel",
+    showLeft: "Show the left panel",
+    showRight: "Show the right panel",
+    choosePhotos: "Choose photos…",
+    chooseFolder: "Choose folder…",
+    importWork: "Import work…",
+    importWorkTitle: "Reopen a saved work file",
+    exportWork: "Export work",
+    exportWorkTitle: "Save the positions assigned so far",
+    downloadZip: "Download geotagged ZIP",
+    loadToStart: "Load photos to start.",
+    jpegOnly: "JPEG only. Everything happens in the browser.",
+    hintClick: "<b>Click</b> on the map = place the selected photo. Drag the dot to move it.",
+    hintShift: "<b>Shift+click</b> (or <b>right-click</b>) a point = aim the photo at it. The direction can also be typed in the right panel.",
+    hintGhost: "The dashed circle is the camera's original position.",
+    hide: "Hide",
+    previewAndCoords: "Preview and coordinates",
+    noPhotoSelected: "No photo selected.",
+    basemapSat: "Satellite",
+    basemapStreet: "Street map",
+    consentTitle: "Base cartography",
+    consentBody: "To draw the map, the browser must download cartography tiles from an external provider (Esri or OpenStreetMap). It is the only feature that connects to the internet: the provider receives your IP address and the area you are viewing. No photo, coordinate or EXIF data leaves your device.",
+    consentAccept: "Enable the map",
+    consentDecline: "Not now",
+    consentDenied: "You chose not to load the base cartography. Placing photos by hand needs the map — you can enable it here.",
+    consentEnable: "Enable the map",
+    consentPolicy: "Privacy notice",
+    lbVisible: "visible photo",
+    lbThermal: "thermal preview",
+    lbClose: "Close (Esc)",
+    origTooltip: "camera's original position",
+    noJpegFound: "No JPEG found.",
+    loaded: "{n} photos loaded. {p} already placed.",
+    statePlaced: "placed",
+    stateOriginal: "original position only",
+    stateNone: "to place",
+    capVisible: "Visible photo embedded in the FLIR file — click to enlarge.",
+    capSearching: "Looking for the visible photo…",
+    capNone: "The file has no visible photo: the thermal preview is below — click to enlarge.",
+    fldPhoto: "Photo",
+    fldLat: "Latitude",
+    fldLon: "Longitude",
+    fldHeading: "Direction (°)",
+    fldAlt: "Altitude (m)",
+    previewOf: "Preview of {name}",
+    optional: "optional",
+    useOrig: "Use original position",
+    clearPos: "Clear",
+    copyEmpty: "Copy position → unplaced photos",
+    copyAll: "Copy position → all",
+    detailHint: "Type lat/lon and press Enter (or leave the field) to apply. Shortcut: ↑ / ↓ to change photo. Shift+click on the map for the direction.",
+    posCopied: "Position copied to {n} photos.",
+    noPhotoPlaced: "No photo placed.",
+    writingExif: "Writing EXIF… {done}/{total}",
+    compressing: "Compressing…",
+    doneReport: "Done: {placed} photos geotagged, {untouched} unchanged",
+    doneErrors: ", {n} errors (see _errori.txt)",
+    invalidFile: "invalid file",
+    workImported: "Work imported: {n} photos updated.",
+    importFailed: "Import failed: ",
+  },
+};
+const LANG = (() => {
+  try { return localStorage.getItem("warmish.lang") === "en" ? "en" : "it"; }
+  catch (_) { return "it"; }
+})();
+const DICT = I18N[LANG];
+function t(key, params) {
+  let s = DICT[key] != null ? DICT[key] : (I18N.it[key] != null ? I18N.it[key] : key);
+  if (params) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in params ? params[k] : m));
+  return s;
+}
+function applyStaticI18n() {
+  document.documentElement.lang = LANG;
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-html]")) el.innerHTML = t(el.dataset.i18nHtml);
+  for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = t(el.dataset.i18nTitle);
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) el.setAttribute("aria-label", t(el.dataset.i18nAria));
+  for (const b of document.querySelectorAll(".lang button")) b.classList.toggle("on", b.dataset.lang === LANG);
+}
 
 const G = piexif.GPSIFD;
 const LS_PREFIX = "warmish-geotag:";
@@ -397,8 +589,8 @@ function openLightbox(it) {
   box.className = "lightbox";
   box.innerHTML =
     `<img src="${isVis ? it.visibleUrl : it.url}" alt="${escapeHtml(it.name)}" />` +
-    `<div class="lb-bar"><span class="lb-cap">${escapeHtml(it.name)} — ${isVis ? "foto visibile" : "anteprima termica"}</span>` +
-    `<button id="lbClose">Chiudi (Esc)</button></div>`;
+    `<div class="lb-bar"><span class="lb-cap">${escapeHtml(it.name)} — ${isVis ? t("lbVisible") : t("lbThermal")}</span>` +
+    `<button id="lbClose">${t("lbClose")}</button></div>`;
   const close = () => { box.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
   box.addEventListener("click", (e) => { if (e.target === box || e.target.id === "lbClose") close(); });
@@ -406,12 +598,32 @@ function openLightbox(it) {
   document.body.appendChild(box);
 }
 
-// ---------------------------------------------------------------- map
-function initMap() {
-  map = L.map("map", { zoomControl: true, worldCopyJump: true, boxZoom: false });
-  map.boxZoom.disable(); // shift is ours — used to set a photo's direction
-  map.setView([42.8551, 13.577], 15);
+// ---------------------------------------------------------------- map-tile consent
+// Mirrors src/lib/consent.svelte.ts: the map view and this tool download basemap
+// tiles from Esri / OpenStreetMap, so those providers see the visitor's IP and
+// the area on screen. Nothing loads until the visitor grants consent; the choice
+// (key `warmish.mapConsent`, shared with the main app on the same origin) lapses
+// after six months.
+const MAP_CONSENT_KEY = "warmish.mapConsent";
+function mapConsentChoice() {
+  try {
+    const rec = JSON.parse(localStorage.getItem(MAP_CONSENT_KEY) || "null");
+    if (!rec || (rec.choice !== "granted" && rec.choice !== "denied")) return null;
+    const d = new Date(rec.date);
+    if (isNaN(d.getTime())) return null;
+    d.setMonth(d.getMonth() + 6);
+    return d < new Date() ? null : rec.choice;
+  } catch (_) { return null; }
+}
+function setMapConsent(choice) {
+  try { localStorage.setItem(MAP_CONSENT_KEY, JSON.stringify({ choice, date: new Date().toISOString() })); }
+  catch (_) {}
+}
 
+let basemapsOn = false;
+function enableBasemaps() {
+  if (basemapsOn || !map) return;
+  basemapsOn = true;
   baseSat = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     { maxZoom: 21, maxNativeZoom: 19, attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics" },
@@ -419,7 +631,60 @@ function initMap() {
   baseOsm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
   baseSat.addTo(map);
-  L.control.layers({ "Satellite": baseSat, "Mappa stradale": baseOsm }, {}, { position: "topright" }).addTo(map);
+  L.control.layers({ [t("basemapSat")]: baseSat, [t("basemapStreet")]: baseOsm }, {}, { position: "topright" }).addTo(map);
+}
+
+function ensureConsentPill() {
+  if (document.getElementById("consentPill")) return;
+  const a = document.createElement("a");
+  a.id = "consentPill";
+  a.className = "consent-pill";
+  a.href = "../#privacy";
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = t("consentPolicy");
+  document.querySelector("main").appendChild(a);
+}
+
+function applyMapConsent() {
+  const choice = mapConsentChoice();
+  const existing = document.getElementById("consentGate");
+  if (existing) existing.remove();
+  if (choice === "granted") {
+    enableBasemaps();
+    ensureConsentPill();
+    if (map) setTimeout(() => map.invalidateSize(), 50);
+    return;
+  }
+  const denied = choice === "denied";
+  const gate = document.createElement("div");
+  gate.className = "consent-gate";
+  gate.id = "consentGate";
+  gate.innerHTML = '<div class="gate-card"><h2></h2><p></p><div class="actions"></div>' +
+    '<a href="../#privacy" target="_blank" rel="noopener"></a></div>';
+  gate.querySelector("h2").textContent = t("consentTitle");
+  gate.querySelector("p").textContent = denied ? t("consentDenied") : t("consentBody");
+  gate.querySelector("a").textContent = t("consentPolicy");
+  const actions = gate.querySelector(".actions");
+  const accept = document.createElement("button");
+  accept.className = "primary";
+  accept.textContent = denied ? t("consentEnable") : t("consentAccept");
+  accept.addEventListener("click", () => { setMapConsent("granted"); applyMapConsent(); });
+  actions.appendChild(accept);
+  if (!denied) {
+    const decline = document.createElement("button");
+    decline.textContent = t("consentDecline");
+    decline.addEventListener("click", () => { setMapConsent("denied"); applyMapConsent(); });
+    actions.appendChild(decline);
+  }
+  document.querySelector("main").appendChild(gate);
+}
+
+// ---------------------------------------------------------------- map
+function initMap() {
+  map = L.map("map", { zoomControl: true, worldCopyJump: true, boxZoom: false });
+  map.boxZoom.disable(); // shift is ours — used to set a photo's direction
+  map.setView([42.8551, 13.577], 15);
 
   const setHeadingTo = (latlng) => {
     if (selected < 0) return;
@@ -462,7 +727,7 @@ function refreshItem(it) {
     it.origMarker = L.marker([it.orig.lat, it.orig.lon], {
       icon: L.divIcon({ className: "", html: `<span class="gt-orig"></span>`, iconSize: [12, 12], iconAnchor: [6, 6] }),
       interactive: false, keyboard: false, zIndexOffset: -500,
-    }).addTo(map).bindTooltip("posizione originale della fotocamera");
+    }).addTo(map).bindTooltip(t("origTooltip"));
   }
 
   if (!it.pos) {
@@ -519,7 +784,7 @@ function loadItem(it) {
 // ---------------------------------------------------------------- load files
 async function ingest(fileList) {
   const files = Array.from(fileList).filter((f) => /\.jpe?g$/i.test(f.name));
-  if (!files.length) { setStatus("Nessun JPEG trovato.", "err"); return; }
+  if (!files.length) { setStatus(t("noJpegFound"), "err"); return; }
   files.sort((a, b) => a.name.localeCompare(b.name));
 
   const rel = files[0].webkitRelativePath || "";
@@ -556,7 +821,7 @@ async function ingest(fileList) {
   renderStrip();
   selectItem(0);
   fitToMarkers();
-  setStatus(`${items.length} foto caricate. ${items.filter((i) => i.pos).length} già posizionate.`);
+  setStatus(t("loaded", { n: items.length, p: items.filter((i) => i.pos).length }));
   sweepVisibles(); // pull the embedded visible photos in the background
 }
 
@@ -576,7 +841,7 @@ function renderStrip() {
   items.forEach((it, i) => {
     const el = document.createElement("button");
     el.className = "card" + (i === selected ? " sel" : "");
-    const state = it.pos ? ["placed", "posizionata"] : it.orig ? ["original", "solo posizione originale"] : ["none", "da posizionare"];
+    const state = it.pos ? ["placed", t("statePlaced")] : it.orig ? ["original", t("stateOriginal")] : ["none", t("stateNone")];
     el.innerHTML =
       `<img src="${it.visibleUrl || it.url}" alt="" loading="lazy" />` +
       `<div><div class="nm">${escapeHtml(it.name)}</div>` +
@@ -588,39 +853,39 @@ function renderStrip() {
 
 function renderDetail() {
   const d = document.getElementById("detail");
-  if (selected < 0) { d.className = "detail empty"; d.textContent = "Nessuna foto selezionata."; return; }
+  if (selected < 0) { d.className = "detail empty"; d.textContent = t("noPhotoSelected"); return; }
   const it = items[selected];
   d.className = "detail";
   const hasVis = !!it.visibleUrl;
   const cap = hasVis
-    ? "Foto visibile incorporata nel file FLIR — clic per ingrandire."
+    ? t("capVisible")
     : it.visibleUrl === undefined
-      ? "Cerco la foto visibile…"
-      : "Il file non contiene una foto visibile: qui sotto l'anteprima termica — clic per ingrandire.";
+      ? t("capSearching")
+      : t("capNone");
   d.innerHTML = `
-    <label>Foto</label>
+    <label>${t("fldPhoto")}</label>
     <div class="nm" style="font-size:12px;word-break:break-all">${escapeHtml(it.name)}</div>
-    <img class="preview" id="fPreview" src="${hasVis ? it.visibleUrl : it.url}" alt="Anteprima di ${escapeHtml(it.name)}" />
+    <img class="preview" id="fPreview" src="${hasVis ? it.visibleUrl : it.url}" alt="${escapeHtml(t("previewOf", { name: it.name }))}" />
     <div class="preview-cap">${cap}</div>
     <div class="grid2">
-      <div><label>Latitudine</label><input type="number" step="0.000001" id="fLat" value="${it.pos ? it.pos.lat : ""}" /></div>
-      <div><label>Longitudine</label><input type="number" step="0.000001" id="fLon" value="${it.pos ? it.pos.lon : ""}" /></div>
+      <div><label>${t("fldLat")}</label><input type="number" step="0.000001" id="fLat" value="${it.pos ? it.pos.lat : ""}" /></div>
+      <div><label>${t("fldLon")}</label><input type="number" step="0.000001" id="fLon" value="${it.pos ? it.pos.lon : ""}" /></div>
     </div>
     <div class="grid2">
-      <div><label>Direzione (°)</label><input type="number" step="1" min="0" max="360" id="fHead" value="${it.heading ?? ""}" placeholder="—" /></div>
-      <div><label>Altitudine (m)</label><input type="number" step="1" id="fAlt" value="${it.alt ?? ""}" placeholder="opzionale" /></div>
+      <div><label>${t("fldHeading")}</label><input type="number" step="1" min="0" max="360" id="fHead" value="${it.heading ?? ""}" placeholder="—" /></div>
+      <div><label>${t("fldAlt")}</label><input type="number" step="1" id="fAlt" value="${it.alt ?? ""}" placeholder="${t("optional")}" /></div>
     </div>
     <div class="mini">
-      <button id="useOrig" ${it.orig ? "" : "disabled"}>Usa posizione originale</button>
-      <button id="clearPos" ${it.pos ? "" : "disabled"}>Cancella</button>
+      <button id="useOrig" ${it.orig ? "" : "disabled"}>${t("useOrig")}</button>
+      <button id="clearPos" ${it.pos ? "" : "disabled"}>${t("clearPos")}</button>
     </div>
     <div class="mini">
-      <button id="copyEmpty" ${it.pos ? "" : "disabled"}>Copia posizione → foto non posizionate</button>
+      <button id="copyEmpty" ${it.pos ? "" : "disabled"}>${t("copyEmpty")}</button>
     </div>
     <div class="mini">
-      <button id="copyAll" ${it.pos ? "" : "disabled"}>Copia posizione → tutte</button>
+      <button id="copyAll" ${it.pos ? "" : "disabled"}>${t("copyAll")}</button>
     </div>
-    <p class="hint">Digita lat/lon e premi Invio (o esci dal campo) per applicare. Shortcut: ↑ / ↓ per cambiare foto. Shift+clic sulla mappa per la direzione.</p>
+    <p class="hint">${t("detailHint")}</p>
   `;
   const bind = (id, fn) => {
     const e = document.getElementById(id);
@@ -661,7 +926,7 @@ function copyPosition(src, all) {
     saveItem(it); refreshItem(it); n++;
   }
   renderStrip(); renderDetail();
-  setStatus(`Posizione copiata su ${n} foto.`);
+  setStatus(t("posCopied", { n: n }));
 }
 
 function selectItem(i) {
@@ -717,7 +982,7 @@ async function writeGps(file, it) {
 
 async function exportZip() {
   const placed = items.filter((i) => i.pos);
-  if (!placed.length) { setStatus("Nessuna foto posizionata.", "err"); return; }
+  if (!placed.length) { setStatus(t("noPhotoPlaced"), "err"); return; }
   document.getElementById("exportZip").disabled = true;
 
   const zip = {};
@@ -726,7 +991,7 @@ async function exportZip() {
   let done = 0;
 
   for (const it of items) {
-    setStatus(`Scrittura EXIF… ${++done}/${items.length}`);
+    setStatus(t("writingExif", { done: ++done, total: items.length }));
     await new Promise((r) => setTimeout(r)); // let the UI breathe
     try {
       if (it.pos) {
@@ -743,14 +1008,14 @@ async function exportZip() {
   zip["geotag.csv"] = fflate.strToU8(csv.join("\n") + "\n");
   if (errors.length) zip["_errori.txt"] = fflate.strToU8(errors.join("\n") + "\n");
 
-  setStatus("Compressione…");
+  setStatus(t("compressing"));
   const bytes = fflate.zipSync(zip, { level: 0 });
   downloadBlob(new Blob([bytes], { type: "application/zip" }), folderName + "_geotag.zip");
 
   document.getElementById("exportZip").disabled = false;
   setStatus(
-    `Fatto: ${placed.length} foto geotaggate, ${items.length - placed.length} invariate` +
-    (errors.length ? `, ${errors.length} errori (vedi _errori.txt)` : "") + ".",
+    t("doneReport", { placed: placed.length, untouched: items.length - placed.length }) +
+    (errors.length ? t("doneErrors", { n: errors.length }) : "") + ".",
     errors.length ? "err" : "ok",
   );
 }
@@ -779,7 +1044,7 @@ function exportWork() {
 async function importWork(file) {
   try {
     const data = JSON.parse(await file.text());
-    if (!data || !Array.isArray(data.items)) throw new Error("file non valido");
+    if (!data || !Array.isArray(data.items)) throw new Error(t("invalidFile"));
     const byName = new Map(data.items.map((r) => [r.name, r]));
     let n = 0;
     for (const it of items) {
@@ -789,14 +1054,22 @@ async function importWork(file) {
       saveItem(it); refreshItem(it); n++;
     }
     renderStrip(); renderDetail(); fitToMarkers();
-    setStatus(`Lavoro importato: ${n} foto aggiornate.`);
+    setStatus(t("workImported", { n: n }));
   } catch (e) {
-    setStatus("Import fallito: " + (e.message || e), "err");
+    setStatus(t("importFailed") + (e.message || e), "err");
   }
 }
 
 // ---------------------------------------------------------------- wire up
+applyStaticI18n();
+for (const b of document.querySelectorAll(".lang button")) {
+  b.addEventListener("click", () => {
+    try { localStorage.setItem("warmish.lang", b.dataset.lang); } catch (_) {}
+    location.reload();
+  });
+}
 initMap();
+applyMapConsent();
 // The three file pickers are opened by <label for>, so they work even on
 // file:// and in browsers that block .click() on hidden inputs.
 document.getElementById("fileInput").addEventListener("change", (e) => e.target.files.length && ingest(e.target.files));

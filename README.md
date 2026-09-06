@@ -106,11 +106,24 @@ session, so overlapping markers cluster into a counter that lists its shots and
 splits as you zoom in.
 
 This is the **only** part of the app that touches the network: the basemap tiles
-come from Esri World Imagery or OpenStreetMap, so the area on screen is revealed
-to that provider. No image or coordinate is uploaded. The map view says so, once,
-in a dismissible notice; opening it is the user's choice. `tests/gps.ts` checks
-`parseGps` against ExifTool's numbers for the sample images, and `test:ui` exercises
-the map with tile requests stubbed offline.
+come from OpenFreeMap, Esri World Imagery or OpenStreetMap, so the area on screen
+is revealed to that provider. No image or coordinate is uploaded.
+
+Because it is the one network path, it is gated. `src/lib/consent.svelte.ts` holds
+a default-deny map-tile consent (key `warmish.mapConsent`, six-month expiry);
+until it reads `granted`, `MapView` never instantiates Leaflet and shows a consent
+panel instead, and the standalone geotag page (which shares the key on the same
+origin) does the same before adding its tile layers.
+
+`ConsentBanner.svelte` surfaces the choice on every startup: a non-blocking
+bottom-left card until consent is granted ("Non ora" records a refusal and hides
+it for the session; it returns on the next load). Once granted it stops showing —
+the "Privacy" button in the top bar reopens the privacy notice, whose preferences
+block grants or withdraws at any time. The notice text is `src/lib/privacy.ts`
+(also reached from the "Apri" menu and the geotag page's `../#privacy` link).
+`tests/gps.ts` checks `parseGps` against ExifTool's numbers for the sample images,
+and `test:ui` exercises the banner, the gate and the map with tile requests
+stubbed offline.
 
 ### Geotag companion tool
 
@@ -131,5 +144,7 @@ in `dist/geotag/` via Vite's `public/` copy. See `public/geotag/README.md`.
 <https://grazianoenzomarchesani.github.io/Warmish-Web/>. Pages source is set to
 **GitHub Actions** (Settings → Pages). The `base: './'` in `vite.config.ts`
 makes asset URLs relative, so the same build serves correctly from the project
-subpath or from any other static host. The map view still reaches its tile
-provider; nothing else touches the network.
+subpath or from any other static host. The map view reaches its tile provider
+only after the visitor grants consent (see [Map view](#map-view)); nothing else
+touches the network. GitHub, Inc. records the usual access logs for the hosted
+site — covered in the privacy notice.
