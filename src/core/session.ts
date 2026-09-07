@@ -38,7 +38,8 @@ export interface SessionState {
 
 /**
  * Desktop sidecars carry RelativeHumidity as a fraction, because the desktop
- * reads it through ExifTool's numeric mode and never converts (see HANDOFF §4).
+ * reads it through ExifTool's numeric mode and never converts (see the "One
+ * deliberate divergence" note in README.md).
  * Its own default is `50.0`, so the file format is ambiguous; anything at or
  * below this threshold is read as a fraction. 1.5 % humidity is not a
  * measurement any camera reports, so the test is safe in practice.

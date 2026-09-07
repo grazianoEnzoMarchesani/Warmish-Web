@@ -22,8 +22,15 @@ to GitHub Pages on every push to `main`. See [Deployment](#deployment-github-pag
 | 5 | Parallel-run validation against the desktop app | in progress |
 
 Phase 5 is the one that does not close on its own: keep both apps available and
-keep widening the sample set. See "Verified equivalence" below for what is
-currently proven, and HANDOFF.md §6 for the risk that remains.
+keep widening the sample set. See [Verified equivalence](#verified-equivalence)
+for what is currently proven and [The open risk](#the-open-risk) for what is not.
+
+Beyond the plan's phases, and also shipped: visible-image overlay with all 13
+blend modes + manual alignment, 20 post-processing filters for the visible frame,
+GPS parsing + the Leaflet [map view](#map-view), the [geotag companion
+tool](#geotag-companion-tool), a default-deny [map-tile consent gate](#map-view)
+with privacy notice, IT/EN [localisation](#languages), and
+[GitHub Pages deployment](#deployment-github-pages).
 
 ## Deviation from the original plan
 
@@ -36,15 +43,22 @@ swapping in a WASM implementation later touches nothing else.
 ## Layout
 
 ```
-src/core/       pure logic, no DOM — parser, Planck math, palettes, compositing,
-                ROI masks and statistics, session I/O, the export pipeline
-src/lib/        canvas viewer (pan/zoom + interactive ROI layer), batch worker
+src/core/       pure logic, no DOM — parser, Planck math, palettes, blend modes,
+                visible-image filters, 16-bit PNG, ROI masks and statistics,
+                session I/O, the CSV/GeoJSON report, the export pipeline
+src/lib/        canvas viewer (pan/zoom + interactive ROI layer), Leaflet map
+                view, batch worker, modals, consent banner, toasts, i18n helper
+src/locales/    UI strings — it.json / en.json
 src/App.svelte  UI shell
 tools/          build-time palette LUT generation from matplotlib (needs the desktop repo)
 tests/          Phase-0/3 numeric gates + browser smoke test
 tests/fixtures/ sample FLIR images, vendored so the suite runs standalone
 tests/reference/ committed ground truth from the desktop engine
 ```
+
+The export ZIP layout — folder structure, the four per-image PNGs, `aree.csv`
+columns, `manifest.json` / GeoJSON schemas — is specified in
+[OUTPUTS.md](OUTPUTS.md) and enforced by `tests/phase3.ts` and `tests/ui-smoke.ts`.
 
 ## Commands
 
@@ -53,7 +67,7 @@ npm install
 npm run dev      # local development
 npm run build    # -> dist/, ready to upload
 npm test         # Phase-0 + Phase-3 + GPS numeric gates
-npm run test:ui  # drives the built app in Chromium (add -- --headed to watch)
+npm run build && npm run test:ui   # drives the built app in Chromium (append -- --headed to watch)
 ```
 
 `npm test` runs against the sample images in `tests/fixtures/` and the committed
@@ -64,6 +78,17 @@ delete `tests/reference/`, and re-run — `tests/python_reference.py` drives it.
 
 Palettes (`src/core/palettes.json`) are regenerated only when the desktop's
 `constants.py` changes: `DESKTOP_REPO=/path/to/Warmish npm run palettes`.
+
+## Languages
+
+The UI ships in Italian (default) and English, switchable from the top bar and
+persisted in `localStorage['warmish.lang']`. Strings live in `src/locales/`;
+`src/lib/i18n.ts` is the pure dictionary + `translate()`, `src/lib/i18n.svelte.ts`
+the reactive wrapper — components use the latter, the batch worker and other plain
+`.ts` modules the former. The standalone geotag page carries its own inline
+dictionary and reads the same key. Export ZIP filenames, `aree.csv` headers,
+`manifest.json` keys and GeoJSON properties are deliberately left untranslated —
+they are a stable contract (see OUTPUTS.md).
 
 ## Verified equivalence
 
@@ -93,6 +118,41 @@ bias. The web app uses percent — matching its own UI and the desktop's own
 default of `50.0` — and `tests/phase0.ts` subtracts the bias explicitly rather
 than hiding it. The magnitude is far below sensor accuracy, but the desktop app
 has a real unit bug here.
+
+Related dev note: the core keeps parsed metadata at full float32 precision and
+rounds only in the UI number inputs. Rounding `24.9999938964844 °C` to `25.0`
+shifts results by up to 0.1 °C on a low-emissivity scene (ε = 0.30).
+
+### Known gaps against the desktop
+
+Small and deliberate — listed so they are not rediscovered as bugs:
+
+- **No auto-save.** A browser cannot silently write a sidecar next to the image.
+  Saving is a download; resuming means opening the `.json` alongside the photo.
+  The UI says so rather than hiding it.
+- **ROI statistics use the parameters on screen.** The desktop recomputes a ROI
+  from the file's *metadata* parameters, ignoring UI edits to reflected /
+  atmospheric temperature. With unmodified parameters the two agree exactly —
+  what `tests/phase3.ts` checks.
+- **Humidity units on import.** Desktop sidecars store a fraction (see above);
+  `humidityToPercent()` in `src/core/session.ts` reads a value ≤ 1.5 as a
+  fraction and anything larger as percent, and always writes percent.
+- **One batch path, no presets.** Selecting or dropping several images (or a
+  folder) opens the filmstrip; each image keeps its own calibration and "Applica
+  a selezionate" pushes palette / parameters / areas across a set. "Esporta
+  cartella (.zip)" then feeds the same worker every other export uses.
+
+### The open risk
+
+Six sample files from two camera models are the only ground truth in the suite,
+plus 91 further images from a second T530 shoot checked field by field against
+ExifTool. FLIR's APP1 format varies across models and firmware in ways only
+partly documented even in ExifTool's own reverse-engineered `FLIR.pm`, so passing
+here does not prove the parser generalises. The mitigation is to keep widening
+`tests/fixtures/` and to keep the desktop app (with real ExifTool) available as a
+cross-check; any new camera variant the parser handles must be added to the
+fixtures so the suite guards against regressions. The binary layout as
+reverse-engineered is documented in the header comment of `src/core/flir.ts`.
 
 ## Map view
 

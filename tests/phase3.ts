@@ -74,8 +74,9 @@ for (const name of IMAGES) {
   const parsed = parseThermalImage(new Uint8Array(readFileSync(join(SAMPLES, `${name}.jpg`))));
   const params = parametersFromMetadata(parsed.metadata);
 
-  // The desktop feeds a fraction into a percent-based correction term (HANDOFF §4),
-  // so every desktop temperature carries this fixed offset. Subtracted, not hidden.
+  // The desktop feeds a fraction into a percent-based correction term (see the
+  // "One deliberate divergence" note in README.md), so every desktop temperature
+  // carries this fixed offset. Subtracted, not hidden.
   const desktopBias = (params.RelativeHumidity / 100 - params.RelativeHumidity) * 0.00002;
 
   const rois: Roi[] = ROI_FIXTURE.map((r, i) => ({

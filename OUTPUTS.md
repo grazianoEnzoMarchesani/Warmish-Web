@@ -52,15 +52,16 @@ cartelle diverse) → suffisso `_2`, `_3`.
 | file | quando | risoluzione | contenuto |
 |---|---|---|---|
 | `termica.png` | sempre | 640×480 nativi | solo immagine colorizzata, zero decorazioni |
-| `termica_annotata.png` | sempre | 4× (2560×1920) | + legenda orizzontale in basso, **senza** ROI |
-| `termica_aree.png` | se `rois.length > 0` | 4× | + legenda + ROI + label |
-| `sovrapposta.png` | se overlay attivo | 4× | composito visibile+termico (scala, posizione, opacità, blend, filtro visibile) + legenda + ROI + label |
+| `termica_annotata.png` | sempre | lato lungo ≤ 2560 px | + legenda orizzontale in basso, **senza** ROI |
+| `termica_aree.png` | se `rois.length > 0` | lato lungo ≤ 2560 px | + legenda + ROI + label |
+| `sovrapposta.png` | se overlay attivo | lato lungo ≤ 2560 px | composito visibile+termico (scala, posizione, opacità, blend, filtro visibile) + legenda + ROI + label |
 
-Il fattore 4× è una costante (`DECORATED_SCALE` in `pipeline.ts`), facile da
-cambiare.
+Il lato lungo decorato è una costante (`DECORATED_LONG_EDGE` in `pipeline.ts`,
+2560 px, con un tetto di 4×), facile da cambiare.
 
 Render **deterministico**: nessuna dipendenza da zoom/pan/dimensione finestra.
-`termica.png` è un render fisso a risoluzione sensore; gli altri a `4 ×` quella.
+`termica.png` è un render fisso a risoluzione sensore; gli altri sono scalati al
+lato lungo decorato.
 
 ### Legenda
 
@@ -154,7 +155,7 @@ I parametri per-ROI in ogni riga rendono le statistiche **riproducibili**.
     "inverted": false,
     "range": { "mode": "auto" },
     "legend": true,
-    "decorated_scale": 4,
+    "decorated_long_edge": 2560,
     "overlay": { "blend": "normal", "opacity": 1, "alignment": { }, "visible_filter": { } },
     "labels": { }
   },
@@ -249,21 +250,12 @@ Solo se qualche file fallisce. Una riga per file: `<nome>: <messaggio>`.
 
 ---
 
-## File toccati (fatto)
+## Implementazione
 
-- `src/core/pipeline.ts` — riscrittura del set di output, `DECORATED_LONG_EDGE`
-  (2560, max 4×), render deterministico, `ImageResult` con righe/manifest/geo
-- `src/lib/batch.worker.ts` — struttura zip a cartelle sotto
-  `warmish_export_<data>/`, aggregati, `originali/`, `includeOriginals`
-- `src/core/render.ts` — `drawLegendH` (barra orizzontale in basso); la barra
-  del viewer live resta verticale a destra
-- `src/core/report.ts` (nuovo) — `buildAreeCsv` (`;`, `,`, BOM, CRLF,
-  `geometria` piatta), `buildManifest`, `buildGeojson`
-- `src/core/roi.ts` — `RoiStats` porta anche `minX/minY/maxX/maxY`
-- `src/core/exif.ts` — `extractExifApp1` / `injectExifApp1` (sostituzione),
-  `parseCapture` (camera + data_ora)
-- `src/App.svelte` — `currentFile`, `dispatchExport`, bottone "Esporta (.zip)",
-  checkbox "Includi originali", rimossi i 4 bottoni vecchi e "sessione cartella"
-- `tests/phase3.ts` (CSV) e `tests/ui-smoke.ts` (struttura zip, GPS nel visibile)
-
-`npm test` e `npm run test:ui` verdi.
+Un solo percorso di codice: `src/core/pipeline.ts` produce il set di output per
+immagine, `src/core/report.ts` gli aggregati (`buildAreeCsv` / `buildManifest` /
+`buildGeojson`), `src/lib/batch.worker.ts` impacchetta lo ZIP. La legenda
+orizzontale in basso è `drawLegendH` in `src/core/render.ts` (la barra del viewer
+live resta verticale a destra). `src/core/exif.ts` innesta l'EXIF del padre nel
+visibile (`injectExifApp1`). Il formato è bloccato da `tests/phase3.ts` (colonne
+CSV) e `tests/ui-smoke.ts` (struttura ZIP, GPS nel visibile).
