@@ -10,6 +10,8 @@
  *   Record payload fields are little-endian; image records carry a 0x20-byte header.
  */
 import { decodePng16Gray } from './png16';
+import { getOrientation } from './exif';
+import { createCanvas, context2d, type AnyCanvas } from './render';
 
 export const REC_RAW_DATA = 1;
 export const REC_EMBEDDED_IMAGE = 14;
@@ -58,6 +60,14 @@ export interface ThermalFile {
   raw: Uint16Array;
   /** Embedded visible-light JPEG bytes, if the file carries one. */
   visible: Uint8Array | null;
+  /**
+   * 90° clockwise turns still needed to bring the embedded visible JPEG bytes
+   * into the same, already-corrected frame as `raw`/`width`/`height` — the raw
+   * grid is rotated eagerly by `parseThermalImage` (a plain typed-array remap),
+   * while the visible frame stays undecoded bytes until a canvas exists to
+   * rotate it, so callers apply this via `decodeVisible`.
+   */
+  orientationQuarterTurns: number;
 }
 
 interface IndexEntry { mainType: number; subType: number; offset: number; length: number }
@@ -206,19 +216,94 @@ export function parseThermalImage(jpeg: Uint8Array): ThermalFile {
     if (body[0] === 0xff && body[1] === 0xd8) visible = body;
   }
 
+  // A portrait shot only ever reaches us as EXIF Orientation 3/6/8 on the parent
+  // JPEG — the sensor itself always writes landscape data. Rotate the raw grid
+  // (and the alignment offset that was measured in that same landscape frame)
+  // here so every downstream consumer (ROI math, compositing, exports) works
+  // in the corrected frame without knowing orientation exists.
+  const quarterTurns = ORIENTATION_TURNS[getOrientation(jpeg)] ?? 0;
+  const rotated = rotateRaw(raw, width, height, quarterTurns);
+  const offset = rotateOffset(imageInfo.OffsetX, imageInfo.OffsetY, quarterTurns);
+
   return {
     metadata: {
       ...camera,
-      RawThermalImageWidth: width,
-      RawThermalImageHeight: height,
+      RawThermalImageWidth: rotated.width,
+      RawThermalImageHeight: rotated.height,
       RawThermalImageType: type,
-      ...imageInfo,
+      Real2IR: imageInfo.Real2IR,
+      OffsetX: offset.x,
+      OffsetY: offset.y,
     },
-    width,
-    height,
-    raw,
+    width: rotated.width,
+    height: rotated.height,
+    raw: rotated.raw,
     visible,
+    orientationQuarterTurns: quarterTurns,
   };
+}
+
+/** EXIF Orientation value → 90°-clockwise turns needed to display correctly.
+ *  Only the no-mirror values occur on real camera output; anything else (a
+ *  flipped scan) is left untouched rather than guessed at. */
+const ORIENTATION_TURNS: Record<number, number> = { 1: 0, 3: 2, 6: 1, 8: 3 };
+
+function rotateRaw(
+  src: Uint16Array, width: number, height: number, quarterTurns: number,
+): { raw: Uint16Array; width: number; height: number } {
+  if (quarterTurns === 0) return { raw: src, width, height };
+  const outW = quarterTurns % 2 === 0 ? width : height;
+  const outH = quarterTurns % 2 === 0 ? height : width;
+  const out = new Uint16Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let nx: number, ny: number;
+      switch (quarterTurns) {
+        case 1: nx = height - 1 - y; ny = x; break;
+        case 2: nx = width - 1 - x; ny = height - 1 - y; break;
+        default: nx = y; ny = width - 1 - x; break; // 3 (270 CW / 90 CCW)
+      }
+      out[ny * outW + nx] = src[y * width + x];
+    }
+  }
+  return { raw: out, width: outW, height: outH };
+}
+
+/** Rotates an (offsetX, offsetY) displacement the same way `rotateRaw` rotates
+ *  the pixels it was measured against. */
+function rotateOffset(x: number, y: number, quarterTurns: number): { x: number; y: number } {
+  switch (quarterTurns) {
+    case 1: return { x: -y, y: x };
+    case 2: return { x: -x, y: -y };
+    case 3: return { x: y, y: -x };
+    default: return { x, y };
+  }
+}
+
+/**
+ * Decodes the embedded visible JPEG and rotates it to match `raw`'s
+ * already-corrected frame, using `file.orientationQuarterTurns`. Returns null
+ * when the file carries no visible frame.
+ */
+export async function decodeVisible(file: ThermalFile): Promise<AnyCanvas | null> {
+  if (!file.visible) return null;
+  const bitmap = await createImageBitmap(
+    new Blob([file.visible as BlobPart], { type: 'image/jpeg' }),
+    { imageOrientation: 'none' },
+  );
+  const q = file.orientationQuarterTurns;
+  const swapped = q % 2 === 1;
+  const out = createCanvas(swapped ? bitmap.height : bitmap.width, swapped ? bitmap.width : bitmap.height);
+  const ctx = context2d(out);
+  if (q) {
+    ctx.translate(out.width / 2, out.height / 2);
+    ctx.rotate((q * 90 * Math.PI) / 180);
+    ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+  } else {
+    ctx.drawImage(bitmap, 0, 0);
+  }
+  bitmap.close();
+  return out;
 }
 
 function str(a: Uint8Array, start: number, len: number): string {

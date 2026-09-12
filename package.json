@@ -26,6 +26,8 @@
     "palettes": "python3 tools/generate_palettes.py"
   },
   "dependencies": {
+    "@tensorflow-models/deeplab": "^0.2.2",
+    "@tensorflow/tfjs": "^4.22.0",
     "fflate": "^0.8.3",
     "leaflet": "^1.9.4",
     "protomaps-leaflet": "^5.1.0"

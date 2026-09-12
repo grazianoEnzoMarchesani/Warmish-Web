@@ -11,7 +11,7 @@
  * plus the session `.json` and the rows/manifest/geojson fragments the caller
  * assembles into the aggregate files.
  */
-import { parseThermalImage, type FlirMetadata, type ThermalFile } from './flir';
+import { decodeVisible, parseThermalImage, type FlirMetadata, type ThermalFile } from './flir';
 import { parseCapture, parseGps, extractExifApp1, injectExifApp1 } from './exif';
 import { colorize, getLut } from './colormap';
 import {
@@ -172,13 +172,12 @@ export async function renderHeroImage(bytes: Uint8Array, s: RenderSettings): Pro
 
   let view: CompositeResult;
   if (s.showVisible && parsed.visible) {
-    const bitmap = await createImageBitmap(new Blob([parsed.visible as BlobPart], { type: 'image/jpeg' }));
+    const bitmap = (await decodeVisible(parsed))!;
     const visible = isIdentityFilter(s.visibleFilter) ? bitmap : applyVisibleFilter(bitmap, s.visibleFilter);
     view = composite({
       thermal, width: parsed.width, height: parsed.height, visible,
       blend: s.blend, opacity: s.opacity, alignment: s.alignment,
     });
-    bitmap.close();
   } else {
     view = composite({ thermal, width: parsed.width, height: parsed.height, visible: null, blend: s.blend, opacity: 1 });
   }
@@ -229,7 +228,7 @@ export async function processImage(bytes: Uint8Array, folder: string, s: RenderS
     outputs.push({ name: 'visibile.jpg', blob: new Blob([grafted as BlobPart], { type: 'image/jpeg' }) });
 
     if (s.showVisible) {
-      const bitmap = await createImageBitmap(new Blob([parsed.visible as BlobPart], { type: 'image/jpeg' }));
+      const bitmap = (await decodeVisible(parsed))!;
       const visible = isIdentityFilter(s.visibleFilter) ? bitmap : applyVisibleFilter(bitmap, s.visibleFilter);
       const over = composite({
         thermal, width: parsed.width, height: parsed.height, visible,
@@ -239,7 +238,6 @@ export async function processImage(bytes: Uint8Array, folder: string, s: RenderS
         name: 'sovrapposta.png',
         blob: await canvasToPng(decorate(over, { rois: s.rois, stats, labels: s.labels, legend })),
       });
-      bitmap.close();
     }
   }
 

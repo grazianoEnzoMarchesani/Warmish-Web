@@ -12,21 +12,24 @@
   import { dialog } from './lib/dialog';
   import MapView, { type MapPoint } from './lib/MapView.svelte';
   import type { Tool } from './lib/tools';
-  import { parseThermalImage, type ThermalFile } from './core/flir';
+  import { parseThermalImage, decodeVisible, type ThermalFile } from './core/flir';
   import { parseCapture, parseExif, parseGps, type ExifEntry, type GpsFix } from './core/exif';
   import { computeTemperatures, parametersFromMetadata, percentileRange, temperatureRange, type ThermalParameters } from './core/planck';
   import { PALETTE_NAMES, DEFAULT_PALETTE, colorize, getLut } from './core/colormap';
   import {
-    BLEND_NAMES, composite, imageDataToCanvas, alignmentFromMetadata,
-    DEFAULT_ALIGNMENT, type BlendMode, type OverlayAlignment,
+    BLEND_NAMES, composite, imageDataToCanvas, alignmentFromMetadata, overlayVisibleCropRect,
+    DEFAULT_ALIGNMENT, type AnyCanvas, type BlendMode, type OverlayAlignment,
   } from './core/render';
   import {
     FILTERS, DEFAULT_FILTER, applyVisibleFilter, filterPreset, isIdentityFilter,
     type VisibleFilter, type FilterName,
   } from './core/imageFilter';
   import {
-    roiColor, roiStatistics, type Roi, type RoiStats,
+    roiColor, roiStatistics, smartMinMaxPlacement, nextRoiId, DEFAULT_ROI_EMISSIVITY, type Roi, type RoiStats,
   } from './core/roi';
+  import { detectVisibleSkyMask, skyMaskToThermalGrid } from './core/sky';
+  import { segmentScene, findBlobs, findBlobsBySurface, sampleGridColors, blobToThermalPoint, type SceneBlob } from './core/sceneSegmentation';
+  import { sceneModelAllowed, setSceneConsent } from './lib/consent.svelte';
   import { DEFAULT_LABEL_SETTINGS, type RoiLabelSettings } from './core/roiRender';
   import { buildSession, parseSession, type SessionPatch } from './core/session';
   import { renderHeroImage, type RenderSettings, type UserParameters } from './core/pipeline';
@@ -135,6 +138,11 @@
   let tool = $state<Tool>('pan');
   let labels = $state<RoiLabelSettings>({ ...DEFAULT_LABEL_SETTINGS });
   let roiCounter = 0;
+  let sceneDetecting = $state(false);
+  let sceneConsentPrompt = $state(false);
+  /** Folder paths queued for `bulkSmartPlaceScene`, set only while the consent
+   *  prompt is waiting on an answer for a bulk (rather than single-image) run. */
+  let pendingBulkScenePaths = $state<string[] | null>(null);
 
   // Sidebar is split into task-focused tabs so only one group of controls is on
   // screen at a time; the choice is remembered like the filmstrip.
@@ -178,7 +186,7 @@
     try { localStorage.setItem('warmish.adv', advOpen ? '1' : '0'); } catch { /* private mode */ }
   });
 
-  let visibleBitmap = $state<ImageBitmap | null>(null);
+  let visibleBitmap = $state<AnyCanvas | null>(null);
   let probe = $state<{ x: number; y: number; t: number } | null>(null);
   let viewer = $state<Viewer | null>(null);
 
@@ -332,6 +340,7 @@
     const pts: MapPoint[] = [];
     if (folder.length) {
       for (const e of folder) {
+        if (!selection.has(e.path)) continue;
         const fix = e.path === activePath && gps ? gps : folderGps.get(e.path);
         if (!fix) continue;
         pts.push({
@@ -471,10 +480,7 @@
       const parsed = parseThermalImage(bytes);
       exif = parseExif(bytes);
       gps = parseGps(bytes);
-      visibleBitmap?.close();
-      visibleBitmap = parsed.visible
-        ? await createImageBitmap(new Blob([parsed.visible as BlobPart], { type: 'image/jpeg' }))
-        : null;
+      visibleBitmap = await decodeVisible(parsed);
       file = parsed;
       fileName = f.name;
       currentFile = f;
@@ -601,6 +607,195 @@
   function deleteRoi(id: string) {
     rois = rois.filter((r) => r.id !== id);
     if (selectedId === id) selectedId = null;
+  }
+
+  function smartPlaceAreas() {
+    if (!file || !temperatures) return;
+    let externalSkyMask: Uint8Array | null = null;
+    if (visibleBitmap) {
+      const visSky = detectVisibleSkyMask(visibleBitmap);
+      if (visSky) externalSkyMask = skyMaskToThermalGrid(visSky, file.width, file.height, alignment);
+    }
+    const placement = smartMinMaxPlacement(temperatures, file.width, file.height, externalSkyMask);
+    if (!placement) return;
+    const radius = Math.max(3, Math.round(Math.min(file.width, file.height) * 0.015));
+    const spot = (name: string, p: { x: number; y: number }): Roi => ({
+      id: nextRoiId(), type: 'SpotROI', name, x: p.x, y: p.y, radius,
+      emissivity: DEFAULT_ROI_EMISSIVITY, color: '',
+    });
+    addRoi(spot(t('areas.smartMinName'), placement.min));
+    addRoi(spot(t('areas.smartMaxName'), placement.max));
+    toast.success(t(placement.skyExcluded ? 'areas.smartDoneSkyExcluded' : 'areas.smartDone'));
+  }
+
+  function requestSceneDetection() {
+    if (!file || !visibleBitmap || sceneDetecting) return;
+    if (!sceneModelAllowed()) { pendingBulkScenePaths = null; sceneConsentPrompt = true; return; }
+    void smartPlaceScene();
+  }
+
+  function requestBulkSceneDetection() {
+    if (sceneDetecting || !selectedCount) return;
+    const paths = [...selection];
+    if (!sceneModelAllowed()) { pendingBulkScenePaths = paths; sceneConsentPrompt = true; return; }
+    void bulkSmartPlaceScene(paths);
+  }
+
+  function acceptSceneConsent() {
+    setSceneConsent('granted');
+    sceneConsentPrompt = false;
+    if (pendingBulkScenePaths) {
+      const paths = pendingBulkScenePaths;
+      pendingBulkScenePaths = null;
+      void bulkSmartPlaceScene(paths);
+    } else {
+      void smartPlaceScene();
+    }
+  }
+
+  function declineSceneConsent() {
+    setSceneConsent('denied');
+    sceneConsentPrompt = false;
+    pendingBulkScenePaths = null;
+  }
+
+  async function smartPlaceScene() {
+    if (!file || !visibleBitmap || sceneDetecting) return;
+    sceneDetecting = true;
+    const prog = progressToast(t('areas.sceneDetecting'));
+    try {
+      // Segment only the part of the real photo the thermal sensor actually
+      // covers (its field of view is usually much wider) — cheaper, and it
+      // stops the model from placing points on scenery that's visible in the
+      // photo but has no thermal data at all.
+      const crop = overlayVisibleCropRect(visibleBitmap.width, visibleBitmap.height, file.width, file.height, alignment);
+      const canvas = document.createElement('canvas');
+      canvas.width = crop.width;
+      canvas.height = crop.height;
+      canvas.getContext('2d')!.drawImage(visibleBitmap, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+
+      const grid = await segmentScene(canvas);
+      if (!grid) {
+        prog.finish('error', t('areas.sceneFailed'));
+        return;
+      }
+
+      const radius = Math.max(3, Math.round(Math.min(file.width, file.height) * 0.015));
+      const place = (blob: SceneBlob, name: string) => {
+        const p = blobToThermalPoint(blob, grid, crop, visibleBitmap!.width, visibleBitmap!.height, file!.width, file!.height, alignment);
+        addRoi({ id: nextRoiId(), type: 'SpotROI', name, x: p.x, y: p.y, radius, emissivity: DEFAULT_ROI_EMISSIVITY, color: '' });
+      };
+
+      const colors = sampleGridColors(canvas, grid);
+      const roads = findBlobs(grid, 'road');
+      const grounds = findBlobs(grid, 'terrain');
+      const vegetation = findBlobs(grid, 'vegetation');
+      const buildings = findBlobsBySurface(grid, 'building', colors, 0.01, 90);
+      const people = findBlobs(grid, 'person', { closeGaps: true, minCellFraction: 0.0025, mergeDistanceFraction: 0.06 });
+
+      if (roads.length) place(roads[0], t('areas.sceneRoad'));
+      if (grounds.length) place(grounds[0], t('areas.sceneGround'));
+      if (vegetation.length) place(vegetation[0], t('areas.sceneVegetation'));
+      buildings.forEach((b, i) => place(b, t('areas.sceneBuilding', { n: i + 1 })));
+      people.forEach((p, i) => place(p, t('areas.scenePerson', { n: i + 1 })));
+
+      const count = (roads.length ? 1 : 0) + (grounds.length ? 1 : 0) + (vegetation.length ? 1 : 0) + buildings.length + people.length;
+      if (!count) prog.finish('info', t('areas.sceneNone'));
+      else prog.finish('success', t('areas.sceneDone', { count }));
+    } catch (err) {
+      console.error('Scene detection failed', err);
+      prog.finish('error', t('areas.sceneFailed'));
+    } finally {
+      sceneDetecting = false;
+    }
+  }
+
+  /** Same detection as `smartPlaceScene`, run over every listed folder image in
+   *  turn instead of just the open one. Each image gets its own ROIs appended
+   *  to whatever session it already has; the live viewer is only touched if
+   *  the currently open image is among `paths`. */
+  async function bulkSmartPlaceScene(paths: string[]) {
+    if (!paths.length || sceneDetecting) return;
+    sceneDetecting = true;
+    if (activePath) {
+      const s = snapshotSession();
+      if (s) remember(activePath, s);
+    }
+    const prog = progressToast(t('areas.sceneDetectingBulk', { done: 0, total: paths.length }));
+    let imagesChanged = 0;
+    let areasPlaced = 0;
+    try {
+      const next = new Map(folderState);
+      for (let i = 0; i < paths.length; i++) {
+        const path = paths[i];
+        prog.update(i, paths.length, t('areas.sceneDetectingBulkProgress', { done: i, total: paths.length, name: fileBase(path) }));
+        const entry = folder.find((e) => e.path === path);
+        if (!entry) continue;
+        try {
+          const parsed = await parseCached(entry);
+          if (!parsed.visible) continue;
+          const bmp = (await decodeVisible(parsed))!;
+          const visW = bmp.width, visH = bmp.height;
+          const saved = next.get(path);
+          const patch = saved ? parseSession(saved) : null;
+          const align = patch?.alignment ?? alignmentFromMetadata(parsed.metadata);
+          const crop = overlayVisibleCropRect(visW, visH, parsed.width, parsed.height, align);
+          const canvas = document.createElement('canvas');
+          canvas.width = crop.width;
+          canvas.height = crop.height;
+          canvas.getContext('2d')!.drawImage(bmp, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+
+          const grid = await segmentScene(canvas);
+          if (!grid) continue;
+          const colors = sampleGridColors(canvas, grid);
+          const roads = findBlobs(grid, 'road');
+          const grounds = findBlobs(grid, 'terrain');
+          const vegetation = findBlobs(grid, 'vegetation');
+          const buildings = findBlobsBySurface(grid, 'building', colors, 0.01, 90);
+          const people = findBlobs(grid, 'person', { closeGaps: true, minCellFraction: 0.0025, mergeDistanceFraction: 0.06 });
+
+          const found: Array<{ blob: SceneBlob; name: string }> = [];
+          if (roads.length) found.push({ blob: roads[0], name: t('areas.sceneRoad') });
+          if (grounds.length) found.push({ blob: grounds[0], name: t('areas.sceneGround') });
+          if (vegetation.length) found.push({ blob: vegetation[0], name: t('areas.sceneVegetation') });
+          buildings.forEach((b, idx) => found.push({ blob: b, name: t('areas.sceneBuilding', { n: idx + 1 }) }));
+          people.forEach((p, idx) => found.push({ blob: p, name: t('areas.scenePerson', { n: idx + 1 }) }));
+          if (!found.length) continue;
+
+          const prevRois = (patch?.rois as Array<Record<string, unknown>>) ?? [];
+          const radius = Math.max(3, Math.round(Math.min(parsed.width, parsed.height) * 0.015));
+          const newRois = found.map(({ blob, name }, idx) => {
+            const p = blobToThermalPoint(blob, grid, crop, visW, visH, parsed.width, parsed.height, align);
+            return {
+              id: nextRoiId(), type: 'SpotROI', name, x: p.x, y: p.y, radius,
+              emissivity: DEFAULT_ROI_EMISSIVITY, color: roiColor(prevRois.length + idx),
+            };
+          });
+          next.set(path, { ...(saved ?? {}), rois: [...prevRois, ...newRois] });
+          imagesChanged++;
+          areasPlaced += newRois.length;
+        } catch (err) {
+          console.error('Bulk scene detection failed for', path, err);
+        }
+      }
+      folderState = next;
+      // The open image's own rois live in `rois`, not `folderState`, until it's
+      // navigated away from — refresh it in place if it was part of this run.
+      if (activePath && paths.includes(activePath)) {
+        const saved = folderState.get(activePath);
+        if (saved) applySession(parseSession(saved), t('toast.sessionSourceFolder'), false);
+      }
+      regenThumbs(paths);
+      prog.finish(
+        areasPlaced ? 'success' : 'info',
+        areasPlaced ? t('areas.sceneBulkDone', { images: imagesChanged, count: areasPlaced }) : t('areas.sceneNone'),
+      );
+    } catch (err) {
+      console.error('Bulk scene detection failed', err);
+      prog.finish('error', t('areas.sceneFailed'));
+    } finally {
+      sceneDetecting = false;
+    }
   }
 
   function download(blob: Blob, name: string) {
@@ -1002,9 +1197,7 @@
       let rendered: CanvasImageSource & { width: number; height: number } =
         thermal as CanvasImageSource & { width: number; height: number };
       if (parsed.visible) {
-        const bmp = await createImageBitmap(
-          new Blob([parsed.visible as BlobPart], { type: 'image/jpeg' }),
-        );
+        const bmp = await decodeVisible(parsed);
         rendered = composite({
           thermal,
           width: parsed.width,
@@ -1014,7 +1207,6 @@
           opacity: patch?.opacity ?? opacity,
           alignment: patch?.alignment ?? alignmentFromMetadata(parsed.metadata),
         }).canvas as CanvasImageSource & { width: number; height: number };
-        bmp.close();
       }
       return downscale(rendered, THUMB_W).toDataURL('image/jpeg', 0.72);
     } catch {
@@ -1128,6 +1320,7 @@
     if (ev.key === 'ArrowRight') navFolder(1);
     else if (ev.key === 'ArrowLeft') navFolder(-1);
     else if (ev.key === 'f' || ev.key === 'F') filmstripOpen = !filmstripOpen;
+    else if (ev.key === ' ' && activePath) { ev.preventDefault(); toggleSelect(activePath); }
   }
 
   /** Drop `undefined` keys so a partial sidecar can't blank a base setting. */
@@ -1507,6 +1700,27 @@
         <h2>{t('areas.title')}</h2>
         <p class="hint">{t('areas.toolsHint')}</p>
 
+        <button class="wide" onclick={smartPlaceAreas} disabled={!file || !temperatures}>
+          {t('areas.smartPlace')}
+        </button>
+        <p class="hint">{t('areas.smartPlaceHint')}</p>
+
+        <button class="wide" onclick={requestSceneDetection} disabled={!file || !visibleBitmap || sceneDetecting}>
+          {sceneDetecting ? t('areas.sceneDetecting') : t('areas.scenePlace')}
+        </button>
+        {#if sceneConsentPrompt}
+          <div class="consent-inline" role="region" aria-label={t('areas.sceneConsentTitle')}>
+            <strong>{t('areas.sceneConsentTitle')}</strong>
+            <p>{t('areas.sceneConsentBody')}</p>
+            <div class="actions">
+              <button class="primary" onclick={acceptSceneConsent}>{t('areas.sceneConsentAccept')}</button>
+              <button onclick={declineSceneConsent}>{t('areas.sceneConsentDecline')}</button>
+            </div>
+          </div>
+        {:else}
+          <p class="hint">{visibleBitmap ? t('areas.scenePlaceHint') : t('areas.scenePlaceNoPhoto')}</p>
+        {/if}
+
         {#if rois.length}
           <ul class="rois">
             {#each rois as roi (roi.id)}
@@ -1772,7 +1986,7 @@
 
 <ConsentBanner
   onshowprivacy={() => (showPrivacy = true)}
-  suppressed={!!file && viewMode === 'map'}
+  suppressed={(!!file && viewMode === 'map') || sceneConsentPrompt}
 />
 
 <Toasts />
@@ -1798,6 +2012,24 @@
           ? t('bulk.copyHint', { name: activePath.split('/').pop() ?? activePath })
           : t('bulk.copyHintNoName')}
       </p>
+
+      <div class="bulk-scene">
+        <button class="wide" onclick={requestBulkSceneDetection} disabled={!selectedCount || sceneDetecting}>
+          {sceneDetecting ? t('areas.sceneDetecting') : t('bulk.sceneDetect', { count: selectedCount })}
+        </button>
+        {#if sceneConsentPrompt}
+          <div class="consent-inline" role="region" aria-label={t('areas.sceneConsentTitle')}>
+            <strong>{t('areas.sceneConsentTitle')}</strong>
+            <p>{t('areas.sceneConsentBody')}</p>
+            <div class="actions">
+              <button class="primary" onclick={acceptSceneConsent}>{t('areas.sceneConsentAccept')}</button>
+              <button onclick={declineSceneConsent}>{t('areas.sceneConsentDecline')}</button>
+            </div>
+          </div>
+        {:else}
+          <p class="hint">{t('bulk.sceneDetectHint')}</p>
+        {/if}
+      </div>
 
       <fieldset class="area-modes" disabled={!rois.length}>
         <legend>{t('bulk.areas')}</legend>
@@ -2019,6 +2251,9 @@
   }
   .sel-row .grow { flex: 1; }
   .sel-row button { padding: 4px 8px; font-size: 12px; }
+  .bulk-scene {
+    margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line);
+  }
   .area-modes {
     display: grid; gap: 10px; margin: 12px 0 0; padding: 12px 0 0;
     border: 0; border-top: 1px solid var(--line); min-width: 0;
@@ -2058,6 +2293,15 @@
   .check input { width: auto; accent-color: var(--accent); }
   .hint { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 8px 0 0; }
   .actions { display: grid; gap: 8px; }
+  .consent-inline {
+    margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); display: flex; flex-direction: column; gap: 8px;
+  }
+  .consent-inline strong { font-size: 12.5px; }
+  .consent-inline p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+  .consent-inline .primary {
+    background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600;
+  }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
   dt { color: var(--muted); }
   dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }

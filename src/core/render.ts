@@ -107,6 +107,51 @@ export interface CompositeResult {
   offsetY: number;
 }
 
+export interface OverlayGeometry { scale: number; offsetX: number; offsetY: number }
+
+/**
+ * The sensor-pixel → visible-image-pixel transform `composite` uses, exposed
+ * on its own so other code (sky detection on the real photo) can map a point
+ * between the two grids without rendering anything.
+ */
+export function overlayGeometry(
+  visibleWidth: number,
+  visibleHeight: number,
+  thermalWidth: number,
+  thermalHeight: number,
+  alignment: OverlayAlignment,
+): OverlayGeometry {
+  const natural = Math.min(visibleWidth / thermalWidth, visibleHeight / thermalHeight);
+  const scale = clamp(alignment.scale, 0.1, 5) * natural;
+  const offsetX = (visibleWidth - thermalWidth * scale) / 2 + alignment.offsetX;
+  const offsetY = (visibleHeight - thermalHeight * scale) / 2 + alignment.offsetY;
+  return { scale, offsetX, offsetY };
+}
+
+export interface VisibleCropRect { x: number; y: number; width: number; height: number }
+
+/**
+ * The visible-photo pixel rectangle actually covered by the thermal sensor,
+ * clamped to the photo's bounds. The visible image's field of view is
+ * typically much wider than the thermal one, so this is normally a small
+ * sub-region — useful to restrict work (e.g. scene segmentation) to the part
+ * of the photo that has a thermal counterpart at all.
+ */
+export function overlayVisibleCropRect(
+  visibleWidth: number,
+  visibleHeight: number,
+  thermalWidth: number,
+  thermalHeight: number,
+  alignment: OverlayAlignment,
+): VisibleCropRect {
+  const { scale, offsetX, offsetY } = overlayGeometry(visibleWidth, visibleHeight, thermalWidth, thermalHeight, alignment);
+  const x0 = clamp(offsetX, 0, visibleWidth);
+  const y0 = clamp(offsetY, 0, visibleHeight);
+  const x1 = clamp(offsetX + thermalWidth * scale, 0, visibleWidth);
+  const y1 = clamp(offsetY + thermalHeight * scale, 0, visibleHeight);
+  return { x: Math.floor(x0), y: Math.floor(y0), width: Math.max(1, Math.ceil(x1 - x0)), height: Math.max(1, Math.ceil(y1 - y0)) };
+}
+
 /**
  * Flattens thermal over visible, mirroring `_update_overlay_positioning`.
  *
@@ -127,10 +172,7 @@ export function composite(o: CompositeOptions): CompositeResult {
   const a = o.alignment ?? DEFAULT_ALIGNMENT;
   const vw = o.visible.width;
   const vh = o.visible.height;
-  const natural = Math.min(vw / o.width, vh / o.height);
-  const scale = clamp(a.scale, 0.1, 5) * natural;
-  const offsetX = (vw - o.width * scale) / 2 + a.offsetX;
-  const offsetY = (vh - o.height * scale) / 2 + a.offsetY;
+  const { scale, offsetX, offsetY } = overlayGeometry(vw, vh, o.width, o.height, a);
 
   const canvas = createCanvas(vw, vh);
   const c = context2d(canvas);

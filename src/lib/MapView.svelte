@@ -59,7 +59,7 @@
     onshowprivacy?: () => void;
   } = $props();
 
-  let host: HTMLDivElement;
+  let host = $state<HTMLDivElement>();
   let map: L.Map | null = null;
   let markerLayer: L.LayerGroup | null = null;
   let fittedOnce = false;
@@ -374,6 +374,7 @@
    *  mid-session, so no further tile request can leave the browser. */
   function destroyMap(): void {
     if (!map) return;
+    if (recording) stopRecording();
     if (tourActive) {
       tourGen++;
       detourGen++;
@@ -477,6 +478,34 @@
     })(),
   );
 
+  // --- Tour video recording --------------------------------------------------
+  // Records the tab (map + panel, already stripped of app chrome while a tour
+  // is active — see `ontour`) with the browser's own screen-capture APIs, so no
+  // frame is ever re-rendered or re-encoded server-side. The chosen multiplier
+  // just runs the fly/dwell timings faster for the recorded run — the output is
+  // already sped up, no post-processing needed.
+  const REC_SPEEDS = [1, 1.5, 2, 2.5, 3] as const;
+  type RecSpeed = (typeof REC_SPEEDS)[number];
+  const recSupported =
+    typeof navigator !== 'undefined' &&
+    typeof navigator.mediaDevices?.getDisplayMedia === 'function' &&
+    typeof MediaRecorder !== 'undefined';
+  let recMenuOpen = $state(false);
+  let recording = $state(false);
+  let recMult = $state<RecSpeed>(
+    (() => {
+      try {
+        const s = Number(localStorage.getItem('warmish.recSpeed')) as RecSpeed;
+        return (REC_SPEEDS as readonly number[]).includes(s) ? s : 2;
+      } catch { return 2; }
+    })(),
+  );
+  let recStream: MediaStream | null = null;
+  let recRecorder: MediaRecorder | null = null;
+  let recChunks: Blob[] = [];
+  let recMimeType = 'video/webm';
+  let recEndTimer: ReturnType<typeof setTimeout> | undefined;
+
   let routeLine: L.Polyline | null = null;
   let doneLine: L.Polyline | null = null;
   let doneBlocked: L.Polyline | null = null;
@@ -499,7 +528,10 @@
 
   const ll = (p: MapPoint): L.LatLngTuple => [p.lat, p.lon];
   const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
-  const speed = () => (reduceMotion ? { fly: 0, dwell: 2000 } : SPEEDS[tourSpeed]);
+  const speed = () => {
+    const base = reduceMotion ? { fly: 0, dwell: 2000 } : SPEEDS[tourSpeed];
+    return recording && recMult !== 1 ? { fly: base.fly / recMult, dwell: base.dwell / recMult } : base;
+  };
 
   // --- Trail geometry ------------------------------------------------------
   // One polyline per hop between consecutive stops. Each hop starts as a plain
@@ -717,6 +749,7 @@
       tourTimer = setTimeout(() => { if (gen === tourGen) goToStop(i + 1); }, speed().dwell);
     } else if (i >= ordered.length - 1) {
       tourPlaying = false; // reached the end, hold here
+      if (recording) recEndTimer = setTimeout(stopRecording, 900); // hold the last frame briefly
     }
   }
 
@@ -779,6 +812,7 @@
   }
 
   function endTour() {
+    if (recording) stopRecording();
     tourGen++;
     detourGen++;
     clearTourTimers();
@@ -798,6 +832,102 @@
         animate: !reduceMotion, duration: 0.6, maxZoom: 17,
       });
     }
+  }
+
+  /** MP4 (H.264) first, so the file opens everywhere — Finder/Explorer previews,
+   *  Photos apps, WhatsApp — without a "convert this" step; WebM only where a
+   *  browser's MediaRecorder can't produce MP4 (older Firefox). */
+  // MP4 looked tempting (opens everywhere without a "convert this" step), but
+  // Chrome's *live* MP4 muxer is still immature: it writes a container that
+  // Chrome itself plays back fine but that stricter players (QuickTime,
+  // Anteprima) decode as a single frozen frame — the whole clip collapses to
+  // its last sample. WebM's VP8/VP9 muxing is the mature, reliable path for
+  // an in-progress recording, so that's what we record.
+  function pickRecMime(): string {
+    const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    return candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
+  }
+
+  function saveBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  /** Actually detaches Leaflet's own zoom/attribution controls from the map
+   *  (not just CSS-hidden) so there's no doubt they're absent from whatever
+   *  pixels the screen share hands to the recorder — restored once done. */
+  function setMapChromeVisible(visible: boolean): void {
+    if (!map) return;
+    if (visible) {
+      map.zoomControl?.addTo(map);
+      map.attributionControl?.addTo(map);
+    } else {
+      map.zoomControl?.remove();
+      map.attributionControl?.remove();
+    }
+  }
+
+  function finishRecording(): void {
+    recStream?.getTracks().forEach((tr) => tr.stop());
+    recStream = null;
+    recRecorder = null;
+    recording = false;
+    setMapChromeVisible(true);
+    const chunks = recChunks;
+    recChunks = [];
+    if (!chunks.length) return;
+    const blob = new Blob(chunks, { type: recMimeType });
+    const baseName = `warmish-tour-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    saveBlob(blob, `${baseName}.webm`);
+  }
+
+  function stopRecording(): void {
+    clearTimeout(recEndTimer);
+    if (recRecorder && recRecorder.state !== 'inactive') recRecorder.stop();
+    else finishRecording();
+  }
+
+  /** Share-picks the current tab, then (re)starts the tour at the chosen
+   *  speed-up so the recorded run is already fast — no re-encoding after. */
+  async function startRecording(mult: RecSpeed): Promise<void> {
+    if (!map || !canTour || recording || !recSupported) return;
+    recMenuOpen = false;
+    recMult = mult;
+    try { localStorage.setItem('warmish.recSpeed', String(mult)); } catch { /* private mode */ }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30 },
+        audio: false,
+        preferCurrentTab: true,
+      } as unknown as DisplayMediaStreamOptions);
+    } catch {
+      return; // the visitor cancelled the share prompt
+    }
+
+    if (tourActive) endTour(); // `recording` is still false here — won't self-stop
+    setMapChromeVisible(false);
+    // Let the removal actually paint before the recorder grabs its first frame.
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+    recStream = stream;
+    recChunks = [];
+    recMimeType = pickRecMime();
+    const rec = new MediaRecorder(stream, { mimeType: recMimeType, videoBitsPerSecond: 8_000_000 });
+    rec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+    rec.onstop = finishRecording;
+    stream.getVideoTracks()[0]?.addEventListener('ended', stopRecording); // "Stop sharing" in the browser bar
+    recRecorder = rec;
+    recording = true;
+    rec.start(250);
+    requestAnimationFrame(startTour);
   }
 
   function togglePlay() {
@@ -852,7 +982,7 @@
   });
 </script>
 
-<div class="wrap" class:touring={tourActive}>
+<div class="wrap" class:touring={tourActive} class:recording={recording}>
   {#if mapTilesAllowed()}
   <div class="host" bind:this={host}></div>
 
@@ -923,6 +1053,31 @@
             <svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M3 17.6c0-2.5 2-4.3 4.8-4.3.9 0 1.7.2 2.3.5.5-1.3 1.6-2.4 3.1-3-.6-1.3-1.1-3.2-1.1-5.4 0-1.9.5-3 1.2-3 .8 0 1.6 1.2 2.1 3.1.4 1.4.5 2.8.5 3.8.8-.2 1.5-.2 2.2 0 1.6.5 2.7 1.6 2.7 2.9 0 1-.7 1.7-1.8 1.9-.6.1-1.2.1-1.9 0 .2.5.3 1 .3 1.5 0 1.9-1.6 3.4-4 3.4H7.2C4.8 21.9 3 20.1 3 17.6Z" />
             </svg>{t(`map.speed.${tourSpeed}`)}</button>
+          <div class="rec-wrap">
+            {#if recording}
+              <button class="tour-btn rec active" onclick={stopRecording} title={t('map.recStopTitle')}>
+                <span class="rec-dot" aria-hidden="true"></span>{t('map.recStop')}
+              </button>
+            {:else}
+              <button class="tour-btn rec" onclick={() => recMenuOpen = !recMenuOpen}
+                disabled={!recSupported} title={recSupported ? t('map.recTitle') : t('map.recUnsupported')}>
+                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2.5" y="6" width="13" height="12" rx="2.5" /><path d="M16.5 10.2l5-2.7v9l-5-2.7z" />
+                </svg>{t('map.rec')}
+              </button>
+              {#if recMenuOpen}
+                <div class="rec-menu" role="menu">
+                  <span class="rec-menu-label">{t('map.recSpeedLabel')}</span>
+                  <div class="rec-speed-row">
+                    {#each REC_SPEEDS as m (m)}
+                      <button type="button" class="rec-speed-opt" onclick={() => startRecording(m)}>{m}×</button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            {/if}
+          </div>
           <button class="tour-btn close" onclick={endTour} aria-label={t('map.exitTour')} title={t('map.exitTourTitle')}>✕</button>
         </div>
       </div>
@@ -1159,6 +1314,9 @@
   .wrap.touring :global(.leaflet-bottom.leaflet-right) { right: auto; left: 0; }
   /* The shell's view-mode switch is hidden during the tour — reclaim its gap. */
   .wrap.touring :global(.leaflet-top.leaflet-left) { top: 0; }
+  /* Clean background for a recording: no zoom buttons, no tile attribution. */
+  .wrap.recording :global(.leaflet-control-zoom),
+  .wrap.recording :global(.leaflet-control-attribution) { display: none; }
   :global(.wm-route) { stroke: var(--muted); }
   :global(.wm-route-done) { stroke: var(--accent); }
   :global(.wm-route-blocked) { stroke: var(--accent); }
@@ -1237,6 +1395,28 @@
   .tour-btn.framing { text-transform: capitalize; font-size: 11.5px; font-weight: 600; gap: 5px; }
   .tour-btn .ico { width: 14px; height: 14px; flex: none; color: var(--muted); }
   .tour-btn.close { margin-left: auto; }
+  .rec-wrap { position: relative; }
+  .tour-btn.rec { font-size: 11.5px; font-weight: 600; gap: 5px; }
+  .tour-btn.rec.active { background: #e0392b; color: #fff; border-color: #e0392b; }
+  .rec-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #fff;
+    animation: wmrecblink 1.1s ease-in-out infinite;
+  }
+  @keyframes wmrecblink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .rec-menu {
+    position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 5;
+    display: flex; flex-direction: column; gap: 7px; padding: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); width: max-content;
+  }
+  .rec-menu-label { font-size: 11px; color: var(--muted); }
+  .rec-speed-row { display: flex; gap: 5px; }
+  .rec-speed-opt {
+    min-width: 40px; height: 30px; padding: 0 8px;
+    background: var(--input-bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-size: 12.5px;
+  }
+  .rec-speed-opt:hover { border-color: var(--accent); color: var(--accent); }
 
   @media (max-width: 760px) {
     .tour-panel { left: 8px; right: 8px; top: 8px; bottom: 8px; width: auto; }

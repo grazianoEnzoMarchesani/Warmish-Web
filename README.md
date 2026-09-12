@@ -27,9 +27,13 @@ for what is currently proven and [The open risk](#the-open-risk) for what is not
 
 Beyond the plan's phases, and also shipped: visible-image overlay with all 13
 blend modes + manual alignment, 20 post-processing filters for the visible frame,
-GPS parsing + the Leaflet [map view](#map-view), the [geotag companion
-tool](#geotag-companion-tool), a default-deny [map-tile consent gate](#map-view)
-with privacy notice, IT/EN [localisation](#languages), and
+automatic EXIF-orientation correction for portrait shots, [automatic scene and
+area labelling](#automatic-scene-and-area-labelling) (road/building/person
+detection + smart min/max), GPS parsing + the Leaflet [map view](#map-view)
+with a selectable, recordable [guided tour](#guided-tour-and-video-export), the
+[geotag companion tool](#geotag-companion-tool), default-deny consent gates for
+both network-touching features with a privacy notice, IT/EN
+[localisation](#languages), and
 [GitHub Pages deployment](#deployment-github-pages).
 
 ## Deviation from the original plan
@@ -154,6 +158,20 @@ cross-check; any new camera variant the parser handles must be added to the
 fixtures so the suite guards against regressions. The binary layout as
 reverse-engineered is documented in the header comment of `src/core/flir.ts`.
 
+## Orientation correction
+
+FLIR sensors always write the raw thermal grid, and the embedded visible JPEG,
+in native landscape layout — a portrait shot only differs by the parent JPEG's
+standard EXIF `Orientation` tag (3/6/8). `src/core/exif.ts` `getOrientation()`
+reads it, and `parseThermalImage()` in `src/core/flir.ts` rotates the raw grid
+(and its alignment offset) eagerly, so every downstream consumer — ROI math,
+compositing, exports — works in the already-corrected frame without knowing
+orientation exists. The visible frame stays undecoded bytes until a canvas
+exists to rotate it, so callers go through `decodeVisible()` instead of
+decoding the embedded JPEG directly. Only the no-mirror values that real
+cameras produce are handled; anything else is left untouched rather than
+guessed at.
+
 ## Map view
 
 `src/core/exif.ts` `parseGps()` reads the standard GPS IFD (latitude/longitude,
@@ -165,15 +183,17 @@ back to the thermal viewer. FLIR cameras often stamp one coarse fix on a whole
 session, so overlapping markers cluster into a counter that lists its shots and
 splits as you zoom in.
 
-This is the **only** part of the app that touches the network: the basemap tiles
-come from OpenFreeMap, Esri World Imagery or OpenStreetMap, so the area on screen
-is revealed to that provider. No image or coordinate is uploaded.
+This is one of only two things in the app that touch the network (the other is
+scene detection, see [below](#automatic-scene-and-area-labelling)): the basemap
+tiles come from OpenFreeMap, Esri World Imagery or OpenStreetMap, so the area
+on screen is revealed to that provider. No image or coordinate is uploaded.
 
-Because it is the one network path, it is gated. `src/lib/consent.svelte.ts` holds
-a default-deny map-tile consent (key `warmish.mapConsent`, six-month expiry);
+Because it is a network path, it is gated. `src/lib/consent.svelte.ts` holds a
+default-deny map-tile consent (key `warmish.mapConsent`, six-month expiry);
 until it reads `granted`, `MapView` never instantiates Leaflet and shows a consent
 panel instead, and the standalone geotag page (which shares the key on the same
-origin) does the same before adding its tile layers.
+origin) does the same before adding its tile layers. Scene detection has its
+own, separate consent (`warmish.sceneConsent`) built on the same store.
 
 `ConsentBanner.svelte` surfaces the choice on every startup: a non-blocking
 bottom-left card until consent is granted ("Non ora" records a refusal and hides
@@ -197,6 +217,61 @@ explicit file, since Vite's dev server SPA-falls-back `/geotag/` to the app) fro
 the sidebar and from the map view's empty / all-same-coordinate states. It ships
 in `dist/geotag/` via Vite's `public/` copy. See `public/geotag/README.md`.
 
+### Guided tour and video export
+
+The map view can fly through the GPS-tagged frames in capture order as a
+guided tour, stripping the app shell down to just the map for the duration.
+Which frames are on the map — and so which stops the tour visits — is the same
+filmstrip checkbox selection used for batch processing (`selection` in
+`src/App.svelte`, feeding the `mapPoints` marker list): only checked images get
+a marker, so picking a subset before opening "Mappa" scopes both the markers
+and the tour to it, without a separate control to learn.
+
+`MapView.svelte` can also record the tour to a file: "Registra" prompts the
+browser's own tab-capture share picker (`getDisplayMedia`), then re-starts the
+tour at a chosen speed multiplier (1×–3×) and pipes the captured frames
+through `MediaRecorder` straight to a downloadable `warmish-tour-<timestamp>.webm`.
+Nothing is re-rendered or re-encoded after the fact — the speed-up is applied
+to the tour's own fly/dwell timings before capture, and Leaflet's zoom and
+attribution controls are actually removed from the map (not just hidden) so
+the recorded frame is clean. WebM (VP9/VP8) is used rather than a live MP4
+mux, which some strict players decode as a single frozen frame. Recording
+needs a browser with `getDisplayMedia` + `MediaRecorder` (all evergreen
+desktop browsers); the button disables itself otherwise.
+
+### Automatic scene and area labelling
+
+The Areas panel can place ROIs by itself instead of only by hand, in two ways:
+
+- **"Rileva scena" (scene detection).** Runs Cityscapes-trained DeepLabv3
+  (`@tensorflow-models/deeplab`, `src/core/sceneSegmentation.ts`) on the
+  embedded real photo, entirely client-side, and drops one spot ROI per
+  recognised road, natural terrain, vegetation patch, building (adjacent
+  buildings with visibly different surfaces are kept separate) and person.
+  It needs the real photo, so images without one show an explicit message
+  instead of silently doing nothing. It's available per image and in bulk
+  (`bulk.sceneDetect` — one image at a time, adding to whatever ROIs that
+  image already has, never replacing them). The ~2MB model is fetched from
+  Google's model hub on first use and cached by the browser afterwards — the
+  **second** (and last) thing this app reaches the network for, gated behind
+  its own consent exactly like the map tiles (see [Map view](#map-view)).
+- **"Posiziona aree intelligenti" (smart min/max).** Places a min and a max
+  spot ROI on the coldest and hottest pixels, excluding the sky from the cold
+  pick — outdoors, the sky is reliably the coldest thing in frame but rarely
+  the point of interest (`smartMinMaxPlacement` in `src/core/roi.ts`). Sky
+  exclusion prefers a real signal when a photo is available — `src/core/sky.ts`
+  grows a region from the top edge on local texture (near-zero contrast),
+  independent of colour, so it isn't fooled by an overcast or gradient sky —
+  and falls back to a thermal-only heuristic otherwise (a cold top-edge region
+  grown with noise tolerance, sanity-checked against a hard median cap and a
+  band/separation test so a sky-less gradient, e.g. an indoor ceiling shot,
+  doesn't get misread as sky).
+
+Both are heuristics rather than ground truth, and unlike the rest of the app
+have no desktop-engine equivalent to validate against. Smart min/max in
+particular is still being evaluated and may be reworked or dropped if it
+doesn't earn its place.
+
 ## Deployment (GitHub Pages)
 
 `.github/workflows/deploy.yml` runs `npm ci && npm run build` on every push to
@@ -204,7 +279,9 @@ in `dist/geotag/` via Vite's `public/` copy. See `public/geotag/README.md`.
 <https://grazianoenzomarchesani.github.io/Warmish-Web/>. Pages source is set to
 **GitHub Actions** (Settings → Pages). The `base: './'` in `vite.config.ts`
 makes asset URLs relative, so the same build serves correctly from the project
-subpath or from any other static host. The map view reaches its tile provider
-only after the visitor grants consent (see [Map view](#map-view)); nothing else
-touches the network. GitHub, Inc. records the usual access logs for the hosted
+subpath or from any other static host. The map view reaches its tile provider,
+and scene detection reaches Google's model hub, only after the visitor grants
+the respective consent (see [Map view](#map-view) and [Automatic scene and area
+labelling](#automatic-scene-and-area-labelling)); nothing else touches the
+network. GitHub, Inc. records the usual access logs for the hosted
 site — covered in the privacy notice.

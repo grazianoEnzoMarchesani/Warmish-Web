@@ -29,8 +29,8 @@ const it: PrivacySection[] = [
     id: 'sintesi',
     title: 'In breve',
     body: [
-      '<p>Warmish Web elabora le foto termiche <strong>interamente nel tuo browser</strong>. Nessuna immagine, coordinata GPS o dato radiometrico viene mai caricato su un server. Il sito non usa cookie, non raccoglie statistiche, non contiene pubblicità e non profila chi lo visita. Caratteri, librerie e grafica sono serviti da questo stesso dominio.</p>',
-      '<p>Una sola funzione si collega a internet, e <strong>resta spenta finché non sei tu ad attivarla</strong>: la vista mappa (e lo strumento Geotag), che scarica lo sfondo cartografico da un fornitore esterno. Se non dai il consenso, la mappa non si apre e tutto il resto dell’app funziona normalmente.</p>',
+      '<p>Warmish Web elabora le foto termiche <strong>interamente nel tuo browser</strong>. Nessuna immagine, coordinata GPS o dato radiometrico viene mai caricato su un server. Il sito non usa cookie, non raccoglie statistiche, non contiene pubblicità e non profila chi lo visita. Caratteri, librerie e grafica dell’app sono serviti da questo stesso dominio.</p>',
+      '<p>Due funzioni si collegano a internet, ed entrambe <strong>restano spente finché non sei tu ad attivarle</strong>: la vista mappa (e lo strumento Geotag), che scarica lo sfondo cartografico da un fornitore esterno, e «Rileva scena» nel pannello Aree, che scarica un modello di riconoscimento (strada, edifici, persone) da Google. Se non dai il consenso a una delle due, quella funzione resta disattivata e tutto il resto dell’app funziona normalmente.</p>',
       '<p>Quanto segue spiega tutto nel dettaglio, come richiesto dagli articoli 13 e 14 del Regolamento (UE) 2016/679 (GDPR).</p>',
     ],
   },
@@ -56,8 +56,8 @@ const it: PrivacySection[] = [
         <li><strong>Non profila</strong> gli utenti e non adotta processi decisionali automatizzati.</li>
         <li><strong>Non rileva la posizione geografica</strong> del dispositivo e non impiega tecniche di identificazione del dispositivo (<em>fingerprinting</em>).</li>
         <li><strong>Non ospita moduli</strong> di contatto, registrazione, commenti o iscrizione a newsletter.</li>
-        <li><strong>Caratteri tipografici, librerie e grafica sono serviti da questo dominio.</strong> Nessuna chiamata a Google Fonts, a CDN o ad altri servizi esterni durante l’uso dell’app.</li>
-        <li><strong>Le immagini che apri non vengono caricate da nessuna parte.</strong> La decodifica FLIR, il calcolo delle temperature, le palette, le aree di interesse e l’esportazione avvengono tutti sul tuo dispositivo.</li>
+        <li><strong>Caratteri tipografici, librerie e grafica dell’app sono serviti da questo dominio.</strong> Nessuna chiamata a Google Fonts o a una CDN per il funzionamento ordinario dell’app. Fa eccezione, solo se la attivi tu, la funzione «Rileva scena» (§ 4.3), che scarica un modello da Google.</li>
+        <li><strong>Le immagini che apri non vengono caricate da nessuna parte.</strong> La decodifica FLIR, il calcolo delle temperature, le palette, le aree di interesse e l’esportazione avvengono tutti sul tuo dispositivo — anche quando usi «Rileva scena»: solo il modello scende dalla rete, mai la tua foto.</li>
       </ul>`,
     ],
   },
@@ -76,8 +76,8 @@ const it: PrivacySection[] = [
         <li><strong>Trasferimento extra-UE:</strong> vedi § 6.</li>
       </ul>`,
       '<h3>3.2 Archiviazione tecnica sul tuo dispositivo</h3>',
-      '<p>L’app salva alcune preferenze nella memoria locale del browser (<code>localStorage</code>): la lingua, il tema, il pannello attivo, l’ultima palette e scala usate, lo stato della striscia delle miniature, il fondo mappa scelto e — se esprimi una scelta — il consenso allo sfondo cartografico (voce <code>warmish.mapConsent</code>, con la data). Lo strumento Geotag salva le posizioni che assegni a mano alle foto.</p>',
-      '<p>Nessuno di questi valori contiene dati personali o identificativi, non permette di riconoscerti e non è leggibile da terzi. Puoi cancellarli in qualsiasi momento dalle impostazioni del browser. Il consenso allo sfondo cartografico scade comunque dopo <strong>sei mesi</strong>, dopodiché torna allo stato di rifiuto.</p>',
+      '<p>L’app salva alcune preferenze nella memoria locale del browser (<code>localStorage</code>): la lingua, il tema, il pannello attivo, l’ultima palette e scala usate, lo stato della striscia delle miniature, il fondo mappa scelto e — se esprimi una scelta — il consenso allo sfondo cartografico (voce <code>warmish.mapConsent</code>) e il consenso al modello di rilevamento scena (voce <code>warmish.sceneConsent</code>), entrambi con la relativa data. Lo strumento Geotag salva le posizioni che assegni a mano alle foto.</p>',
+      '<p>Nessuno di questi valori contiene dati personali o identificativi, non permette di riconoscerti e non è leggibile da terzi. Puoi cancellarli in qualsiasi momento dalle impostazioni del browser. Entrambi i consensi scadono comunque dopo <strong>sei mesi</strong>, dopodiché tornano allo stato di rifiuto.</p>',
       '<p><strong>Base giuridica:</strong> archiviazione strettamente necessaria alla fornitura del servizio richiesto, esente da consenso ai sensi dell’art. 122, comma 1, del Codice Privacy (D.Lgs. 196/2003) e dell’art. 5(3) della Direttiva 2002/58/CE.</p>',
       '<h3>3.3 Le immagini che elabori</h3>',
       '<p>Le foto radiometriche FLIR possono contenere dati personali: coordinate GPS, data e ora dello scatto, numero di serie della fotocamera e, a volte, il nome dell’operatore. Warmish li legge, li mostra e li usa (per esempio per posizionare gli scatti sulla mappa) <strong>senza mai trasmetterli</strong>. Restano nel tuo browser per tutta la durata della sessione e vengono scartati quando chiudi la scheda.</p>',
@@ -86,7 +86,7 @@ const it: PrivacySection[] = [
   },
   {
     id: 'con-consenso',
-    title: '4. Dati trattati solo con il tuo consenso: lo sfondo cartografico',
+    title: '4. Dati trattati solo con il tuo consenso',
     body: [
       '<h3>Stato predefinito: disattivato</h3>',
       '<p>La vista mappa e lo strumento Geotag mostrano le foto su una mappa scorrevole. Per disegnare la mappa il browser deve scaricare le <em>mattonelle</em> (tile) della cartografia da un fornitore esterno. Finché non compi un’azione esplicita di accettazione <strong>nessuna richiesta raggiunge questi fornitori</strong> e la mappa non viene caricata.</p>',
@@ -105,6 +105,13 @@ const it: PrivacySection[] = [
       </ul>`,
       '<h3>4.2 Revoca del consenso</h3>',
       '<p>Puoi <strong>modificare o revocare la scelta in qualsiasi momento</strong> dal riquadro «Preferenze» in cima a questa pagina, oppure cancellando i dati del sito dal tuo browser. La revoca impedisce ulteriori richieste ai fornitori delle mappe da questa sessione in poi, ma non incide sui trattamenti già effettuati da tali soggetti, verso i quali i diritti vanno esercitati direttamente.</p>',
+      '<h3>4.3 Il modello di rilevamento scena</h3>',
+      '<p>Il pulsante «Rileva scena (strada, edifici, persone)» nel pannello Aree esegue, sulla foto reale abbinata allo scatto termico, un modello di comprensione della scena (segmentazione semantica Cityscapes) <strong>interamente nel tuo browser</strong>. La prima volta che lo usi, il browser scarica i pesi del modello (alcuni megabyte) da <strong>Google</strong>, tramite il suo model hub (tfhub.dev); le volte successive il browser li recupera dalla propria cache, senza nuove richieste. Finché non accetti esplicitamente, la funzione resta disattivata e nessuna richiesta raggiunge Google.</p>',
+      '<p>Questa richiesta rivela a Google il tuo <strong>indirizzo IP</strong> e informazioni su browser e dispositivo (<em>user agent</em>): sono i dati minimi necessari per scaricare un file. <strong>La foto che stai analizzando non viene mai inviata</strong>: il modello gira localmente sul tuo dispositivo, e il suo risultato (i punti su strada, edifici e persone) resta nel tuo browser come qualunque altra area che disegni a mano.</p>',
+      `<ul>
+        <li><strong>Base giuridica:</strong> consenso, art. 6(1)(a) GDPR.</li>
+        <li><strong>Se non presti il consenso:</strong> il pulsante resta disponibile ma, al primo utilizzo, richiede una conferma; se rifiuti, «Rileva scena» non funziona ma tutte le altre funzioni di Warmish restano identiche.</li>
+      </ul>`,
     ],
   },
   {
@@ -126,6 +133,7 @@ const it: PrivacySection[] = [
           <tr><td>Esri (USA)</td><td>mattonelle della vista satellitare, <strong>solo previo consenso</strong></td><td>Clausole contrattuali tipo; ove applicabile <em>EU–US Data Privacy Framework</em></td></tr>
           <tr><td>OpenStreetMap Foundation (UK)</td><td>mattonelle della vista stradale, <strong>solo previo consenso</strong></td><td>Regno Unito: decisione di adeguatezza della Commissione UE</td></tr>
           <tr><td>OpenFreeMap</td><td>sfondo minimale, <strong>solo previo consenso</strong></td><td>Infrastruttura nello Spazio Economico Europeo</td></tr>
+          <tr><td>Google LLC (USA)</td><td>download del modello di rilevamento scena, <strong>solo previo consenso</strong></td><td>Decisione di adeguatezza <em>EU–US Data Privacy Framework</em>; clausole contrattuali tipo</td></tr>
         </tbody>
       </table></div>`,
       '<p>I trasferimenti avvengono ai sensi degli articoli 44 e seguenti del GDPR. Puoi ottenere maggiori informazioni sulle garanzie adottate scrivendo all’indirizzo indicato al § 1.</p>',
@@ -138,7 +146,7 @@ const it: PrivacySection[] = [
       `<ul>
         <li><strong>Registri di accesso dell’hosting:</strong> secondo le politiche del fornitore; non accessibili al titolare.</li>
         <li><strong>Preferenze dell’app e posizioni del Geotag:</strong> nella memoria del tuo browser, finché non le cancelli.</li>
-        <li><strong>Consenso allo sfondo cartografico:</strong> fino a 6 mesi, o fino a quando non lo modifichi.</li>
+        <li><strong>Consenso allo sfondo cartografico e al modello di rilevamento scena:</strong> fino a 6 mesi ciascuno, o fino a quando non li modifichi.</li>
         <li><strong>Immagini elaborate e relativi metadati:</strong> in memoria per la sola durata della sessione; nulla viene conservato dopo la chiusura della scheda.</li>
       </ul>`,
     ],
@@ -180,8 +188,8 @@ const en: PrivacySection[] = [
     id: 'sintesi',
     title: 'In short',
     body: [
-      '<p>Warmish Web processes thermal photos <strong>entirely in your browser</strong>. No image, GPS coordinate or radiometric data is ever uploaded to a server. The site sets no cookies, collects no analytics, carries no advertising and does not profile its visitors. Fonts, libraries and graphics are served from this domain.</p>',
-      '<p>One feature reaches the network, and <strong>it stays off until you switch it on</strong>: the map view (and the Geotag tool), which downloads the base cartography from an external provider. If you decline, the map does not open and the rest of the app works normally.</p>',
+      '<p>Warmish Web processes thermal photos <strong>entirely in your browser</strong>. No image, GPS coordinate or radiometric data is ever uploaded to a server. The site sets no cookies, collects no analytics, carries no advertising and does not profile its visitors. The app\'s fonts, libraries and graphics are served from this domain.</p>',
+      '<p>Two features reach the network, and <strong>both stay off until you switch them on</strong>: the map view (and the Geotag tool), which downloads the base cartography from an external provider, and "Detect scene" in the Areas panel, which downloads a recognition model (road, buildings, people) from Google. If you decline either one, that feature stays off and the rest of the app works normally.</p>',
       '<p>What follows sets out the detail required by Articles 13 and 14 of Regulation (EU) 2016/679 (GDPR).</p>',
     ],
   },
@@ -207,8 +215,8 @@ const en: PrivacySection[] = [
         <li><strong>No profiling</strong> and no automated decision-making.</li>
         <li><strong>No device geolocation</strong> and no device fingerprinting.</li>
         <li><strong>No forms</strong> for contact, registration, comments or newsletters.</li>
-        <li><strong>Fonts, libraries and graphics are served from this domain.</strong> No call to Google Fonts, to a CDN or to any other external service while you use the app.</li>
-        <li><strong>The images you open are not uploaded anywhere.</strong> FLIR decoding, temperature computation, palettes, regions of interest and export all happen on your device.</li>
+        <li><strong>The app's fonts, libraries and graphics are served from this domain.</strong> No call to Google Fonts or to a CDN for the app's ordinary operation. The one exception, only if you switch it on yourself, is "Detect scene" (§ 4.3), which downloads a model from Google.</li>
+        <li><strong>The images you open are not uploaded anywhere.</strong> FLIR decoding, temperature computation, palettes, regions of interest and export all happen on your device — including when you use "Detect scene": only the model comes down from the network, never your photo.</li>
       </ul>`,
     ],
   },
@@ -227,8 +235,8 @@ const en: PrivacySection[] = [
         <li><strong>Transfer outside the EU:</strong> see § 6.</li>
       </ul>`,
       '<h3>3.2 Technical storage on your device</h3>',
-      '<p>The app saves a few preferences in the browser’s local storage (<code>localStorage</code>): language, theme, active panel, the last palette and scale used, the filmstrip state, the chosen basemap and — if you make a choice — your map-tile consent (under <code>warmish.mapConsent</code>, with the date). The Geotag tool saves the positions you assign to photos by hand.</p>',
-      '<p>None of these values holds personal or identifying data, none can be used to recognise you, and none is readable by third parties. You can delete them at any time from your browser settings. The map-tile consent lapses after <strong>six months</strong> in any case, reverting to declined.</p>',
+      '<p>The app saves a few preferences in the browser’s local storage (<code>localStorage</code>): language, theme, active panel, the last palette and scale used, the filmstrip state, the chosen basemap and — if you make a choice — your map-tile consent (under <code>warmish.mapConsent</code>) and your scene-detection-model consent (under <code>warmish.sceneConsent</code>), each with its date. The Geotag tool saves the positions you assign to photos by hand.</p>',
+      '<p>None of these values holds personal or identifying data, none can be used to recognise you, and none is readable by third parties. You can delete them at any time from your browser settings. Both consents lapse after <strong>six months</strong> in any case, reverting to declined.</p>',
       '<p><strong>Legal basis:</strong> storage strictly necessary to provide the service you requested, exempt from consent under Article 5(3) of Directive 2002/58/EC.</p>',
       '<h3>3.3 The images you process</h3>',
       '<p>Radiometric FLIR photos can contain personal data: GPS coordinates, capture date and time, camera serial number and sometimes the operator’s name. Warmish reads, shows and uses them (for example to place shots on the map) <strong>without ever transmitting them</strong>. They stay in your browser for the session and are discarded when you close the tab.</p>',
@@ -237,7 +245,7 @@ const en: PrivacySection[] = [
   },
   {
     id: 'con-consenso',
-    title: '4. Processing that requires your consent: the base cartography',
+    title: '4. Processing that requires your consent',
     body: [
       '<h3>Default state: off</h3>',
       '<p>The map view and the Geotag tool show photos on a slippy map. To draw the map, the browser must download cartography <em>tiles</em> from an external provider. Until you take an explicit step to accept, <strong>no request reaches these providers</strong> and the map is not loaded.</p>',
@@ -256,6 +264,13 @@ const en: PrivacySection[] = [
       </ul>`,
       '<h3>4.2 Withdrawing consent</h3>',
       '<p>You may <strong>change or withdraw your choice at any time</strong> from the “Preferences” box at the top of this page, or by clearing the site data in your browser. Withdrawal stops any further requests to the map providers from that point on, but does not undo processing already performed by those parties, against which rights must be exercised directly.</p>',
+      '<h3>4.3 The scene-detection model</h3>',
+      '<p>The "Detect scene (road, buildings, people)" button in the Areas panel runs a scene-understanding model (Cityscapes semantic segmentation) on the real photo paired with the thermal shot, <strong>entirely in your browser</strong>. The first time you use it, the browser downloads the model\'s weights (a few megabytes) from <strong>Google</strong>, via its model hub (tfhub.dev); on later uses the browser serves them from its own cache, with no new request. Until you explicitly accept, the feature stays off and no request reaches Google.</p>',
+      '<p>That download reveals your <strong>IP address</strong> and browser/device information (user agent) to Google — the minimum needed to fetch a file. <strong>The photo you are analysing is never sent</strong>: the model runs locally on your device, and its result (the points on the road, buildings and people) stays in your browser like any area you draw by hand.</p>',
+      `<ul>
+        <li><strong>Legal basis:</strong> consent, Article 6(1)(a) GDPR.</li>
+        <li><strong>If you do not consent:</strong> the button stays available but asks for confirmation on first use; if you decline, "Detect scene" doesn't run, while every other Warmish feature stays exactly the same.</li>
+      </ul>`,
     ],
   },
   {
@@ -277,6 +292,7 @@ const en: PrivacySection[] = [
           <tr><td>Esri (USA)</td><td>satellite-view tiles, <strong>consent only</strong></td><td>Standard contractual clauses; where applicable the <em>EU–US Data Privacy Framework</em></td></tr>
           <tr><td>OpenStreetMap Foundation (UK)</td><td>street-view tiles, <strong>consent only</strong></td><td>United Kingdom: European Commission adequacy decision</td></tr>
           <tr><td>OpenFreeMap</td><td>minimal basemap, <strong>consent only</strong></td><td>Infrastructure within the European Economic Area</td></tr>
+          <tr><td>Google LLC (USA)</td><td>scene-detection model download, <strong>consent only</strong></td><td><em>EU–US Data Privacy Framework</em> adequacy decision; standard contractual clauses</td></tr>
         </tbody>
       </table></div>`,
       '<p>Transfers take place under Articles 44 et seq. GDPR. Further information about the safeguards in place is available on request at the address in § 1.</p>',
@@ -289,7 +305,7 @@ const en: PrivacySection[] = [
       `<ul>
         <li><strong>Hosting access logs:</strong> per the provider’s policy; not accessible to the controller.</li>
         <li><strong>App preferences and Geotag positions:</strong> in your browser’s storage, until you clear them.</li>
-        <li><strong>Map-tile consent:</strong> up to 6 months, or until you change it.</li>
+        <li><strong>Map-tile and scene-detection-model consent:</strong> up to 6 months each, or until you change them.</li>
         <li><strong>Processed images and their metadata:</strong> in memory for the session only; nothing is kept after the tab closes.</li>
       </ul>`,
     ],

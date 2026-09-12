@@ -141,6 +141,35 @@ export function parseCapture(jpeg: Uint8Array): CaptureInfo {
   return { camera, datetime };
 }
 
+/**
+ * IFD0's Orientation tag (0x0112, EXIF/TIFF standard values 1-8), or 1 (normal)
+ * if the file carries none. FLIR sensors always write the raw thermal grid and
+ * the embedded visible frame in native landscape layout; a phone-style portrait
+ * shot only differs by this tag, so `flir.ts` reads it to rotate both back to
+ * the orientation the camera actually displayed.
+ */
+export function getOrientation(jpeg: Uint8Array): number {
+  const tiff = findExifTiff(jpeg);
+  if (!tiff || tiff.length < 8) return 1;
+  const dv = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
+  const le = str(tiff, 0, 2) === 'II';
+  const u16 = (o: number) => dv.getUint16(o, le);
+  const u32 = (o: number) => dv.getUint32(o, le);
+  if (u16(2) !== 42) return 1;
+  const ifd0 = u32(4);
+  if (ifd0 < 8 || ifd0 + 2 > tiff.length) return 1;
+  const count = u16(ifd0);
+  for (let i = 0; i < count; i++) {
+    const e = ifd0 + 2 + i * 12;
+    if (e + 12 > tiff.length) break;
+    if (u16(e) === 0x0112) {
+      const v = u16(e + 8);
+      return v >= 1 && v <= 8 ? v : 1;
+    }
+  }
+  return 1;
+}
+
 export function parseExif(jpeg: Uint8Array): ExifEntry[] {
   const tiff = findExifTiff(jpeg);
   if (!tiff || tiff.length < 8) return [];

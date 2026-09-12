@@ -183,6 +183,159 @@ export function roiStatistics(
   };
 }
 
+export interface SmartPoint { x: number; y: number; value: number }
+export interface SmartPlacement { min: SmartPoint; max: SmartPoint; skyExcluded: boolean }
+
+/**
+ * Thermal-only sky detection: a cold region connected to the top edge of the
+ * frame, grown by region growing — a neighbour joins while it stays within a
+ * noise/gradient tolerance of the region's own running average, and never
+ * past the frame's overall median. The running average absorbs per-pixel
+ * sensor noise and lets a tilted horizon or a gradual sky gradient through;
+ * the median cap stops it from drifting past a sharp boundary into what's
+ * clearly the warmer half of the scene.
+ *
+ * This is a fallback for when there's no real photo to work from — prefer
+ * `detectVisibleSkyMask` (sky.ts) when one is available. Temperature alone
+ * is a weak signal here: an optically blurred sky/roofline transition, or a
+ * building material that happens to sit at sky temperature, can fool it.
+ * Returns null when the top of the frame isn't distinctly, genuinely cold
+ * (indoor shots, a sky-less crop) — see the two checks below.
+ */
+function detectThermalSkyMask(temps: Float64Array, width: number, height: number): Uint8Array | null {
+  let count = 0;
+  for (let i = 0; i < temps.length; i++) if (!Number.isNaN(temps[i])) count++;
+  if (!count) return null;
+
+  const valid = new Float64Array(count);
+  for (let i = 0, j = 0; i < temps.length; i++) {
+    const v = temps[i];
+    if (!Number.isNaN(v)) valid[j++] = v;
+  }
+  const sorted = Float64Array.from(valid).sort();
+  const median = sorted[sorted.length >> 1];
+  const range = sorted[sorted.length - 1] - sorted[0];
+  const tolerance = Math.max(1.5, range * 0.08);
+
+  const sky = new Uint8Array(temps.length);
+  const stack: number[] = [];
+  let regionSum = 0, regionCount = 0;
+  for (let x = 0; x < width; x++) {
+    const v = temps[x]; // y = 0
+    if (Number.isNaN(v) || v > median) continue;
+    sky[x] = 1; stack.push(x);
+    regionSum += v; regionCount++;
+  }
+  let regionMean = regionCount ? regionSum / regionCount : NaN;
+  while (stack.length) {
+    const idx = stack.pop()!;
+    const x = idx % width, y = (idx / width) | 0;
+    const neighbors: number[] = [];
+    if (x > 0) neighbors.push(idx - 1);
+    if (x < width - 1) neighbors.push(idx + 1);
+    if (y > 0) neighbors.push(idx - width);
+    if (y < height - 1) neighbors.push(idx + width);
+    for (const n of neighbors) {
+      if (sky[n]) continue;
+      const v = temps[n];
+      if (Number.isNaN(v) || v > median || Math.abs(v - regionMean) > tolerance) continue;
+      sky[n] = 1;
+      stack.push(n);
+      regionSum += v; regionCount++;
+      regionMean = regionSum / regionCount;
+    }
+  }
+
+  let skyCount = 0;
+  for (let i = 0; i < sky.length; i++) if (sky[i]) skyCount++;
+  if (!skyCount) return null;
+
+  // Growth mostly stops at a genuine sky/ground edge (a jump past `tolerance`).
+  // On a smooth, sky-less gradient (an indoor ceiling-to-floor shot, say) it
+  // instead rides the median cap with no real discontinuity. Two bulk checks
+  // catch that, deliberately avoiding any single boundary pixel — a real
+  // camera optically blurs the sky/roofline transition across a couple of
+  // pixels, so one blurred edge pixel is a poor, noisy judge on its own:
+  //  - band: real sky is a narrow band next to the frame's full dynamic
+  //    range; a gradient sliced by the median cap instead spans a big chunk
+  //    of it.
+  //  - separation: the region's *bulk* (90th percentile) shouldn't reach
+  //    into everything else's *bulk* (10th percentile).
+  const skyVals: number[] = [];
+  const restVals: number[] = [];
+  let skyMin = Infinity, skyMax = -Infinity;
+  for (let i = 0; i < temps.length; i++) {
+    const v = temps[i];
+    if (Number.isNaN(v)) continue;
+    if (sky[i]) {
+      skyVals.push(v);
+      if (v < skyMin) skyMin = v;
+      if (v > skyMax) skyMax = v;
+    } else {
+      restVals.push(v);
+    }
+  }
+  skyVals.sort((a, b) => a - b);
+  restVals.sort((a, b) => a - b);
+  const isNarrowBand = range > 0 && (skyMax - skyMin) / range <= 0.3;
+  const isSeparated =
+    restVals.length > 0 &&
+    skyVals[Math.floor(skyVals.length * 0.9)] <= restVals[Math.floor(restVals.length * 0.1)] + tolerance;
+  const hasRealEdge = isNarrowBand && isSeparated;
+
+  // A near-total "sky" means the heuristic misfired (e.g. a uniformly cold
+  // indoor scene) — fall back to considering every pixel.
+  const skyUsable = skyCount <= count * 0.92 && hasRealEdge;
+  return skyUsable ? sky : null;
+}
+
+/**
+ * Finds the coldest and hottest pixels, excluding the sky from the cold pick
+ * — the sky is reliably the coldest thing in an outdoor shot but rarely the
+ * point of interest. The hottest pixel is never excluded (sky is never hot).
+ *
+ * `externalSkyMask`, when given (thermal-grid-sized, from
+ * `skyMaskToThermalGrid`), is trusted as-is — pass the real photo's sky mask
+ * here whenever one is available, since it's far more reliable than the
+ * thermal-only fallback (`detectThermalSkyMask`) used otherwise.
+ */
+export function smartMinMaxPlacement(
+  temps: Float64Array,
+  width: number,
+  height: number,
+  externalSkyMask?: Uint8Array | null,
+): SmartPlacement | null {
+  let count = 0;
+  for (let i = 0; i < temps.length; i++) if (!Number.isNaN(temps[i])) count++;
+  if (!count) return null;
+
+  const sky = externalSkyMask ?? detectThermalSkyMask(temps, width, height);
+  let skyCount = 0;
+  if (sky) for (let i = 0; i < sky.length; i++) if (sky[i]) skyCount++;
+  const skyUsable = !!sky && skyCount > 0 && skyCount <= count * 0.92;
+
+  let maxV = -Infinity, maxIdx = -1;
+  let minAnyV = Infinity, minAnyIdx = -1;
+  let minColdOnlyV = Infinity, minColdOnlyIdx = -1;
+  for (let i = 0; i < temps.length; i++) {
+    const v = temps[i];
+    if (Number.isNaN(v)) continue;
+    if (v > maxV) { maxV = v; maxIdx = i; }
+    if (v < minAnyV) { minAnyV = v; minAnyIdx = i; }
+    if (skyUsable && !sky![i] && v < minColdOnlyV) { minColdOnlyV = v; minColdOnlyIdx = i; }
+  }
+  if (maxIdx === -1) return null;
+  const useExcluded = skyUsable && minColdOnlyIdx !== -1;
+  const minIdx = useExcluded ? minColdOnlyIdx : minAnyIdx;
+  const minV = useExcluded ? minColdOnlyV : minAnyV;
+
+  return {
+    max: { x: maxIdx % width, y: (maxIdx / width) | 0, value: maxV },
+    min: { x: minIdx % width, y: (minIdx / width) | 0, value: minV },
+    skyExcluded: useExcluded && minIdx !== minAnyIdx,
+  };
+}
+
 /** Moves a ROI by a delta in sensor pixels. */
 export function translateRoi(roi: Roi, dx: number, dy: number): void {
   if (roi.type === 'PolygonROI') {

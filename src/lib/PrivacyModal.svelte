@@ -2,13 +2,14 @@
   import { dialog } from './dialog';
   import { t, getLocale } from './i18n.svelte';
   import { PRIVACY_UPDATED, privacySections } from './privacy';
-  import { mapConsent, setMapConsent } from './consent.svelte';
+  import { mapConsent, setMapConsent, sceneConsent, setSceneConsent } from './consent.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
 
   const sections = $derived(privacySections(getLocale()));
   const updated = $derived(PRIVACY_UPDATED[getLocale()]);
   const tilesOn = $derived(mapConsent() === 'granted');
+  const sceneOn = $derived(sceneConsent() === 'granted');
 
   function onKey(ev: KeyboardEvent) {
     if (ev.key === 'Escape') onclose();
@@ -37,6 +38,16 @@
             <button type="button" onclick={() => setMapConsent('denied')}>{t('privacy.prefsDisable')}</button>
           {:else}
             <button type="button" class="primary" onclick={() => setMapConsent('granted')}>{t('privacy.prefsEnable')}</button>
+          {/if}
+        </div>
+        <div class="prefs-row">
+          <span class="state" class:on={sceneOn}>
+            {sceneOn ? t('privacy.prefsSceneOn') : t('privacy.prefsSceneOff')}
+          </span>
+          {#if sceneOn}
+            <button type="button" onclick={() => setSceneConsent('denied')}>{t('privacy.prefsDisable')}</button>
+          {:else}
+            <button type="button" class="primary" onclick={() => setSceneConsent('granted')}>{t('privacy.prefsEnable')}</button>
           {/if}
         </div>
       </section>
@@ -82,6 +93,7 @@
   }
   .prefs h3 { margin: 0 0 8px; }
   .prefs-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .prefs-row + .prefs-row { margin-top: 8px; }
   .state { font-size: 12.5px; color: var(--muted); }
   .state.on { color: var(--text); }
   .prefs-row button {
