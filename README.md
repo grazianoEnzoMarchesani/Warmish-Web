@@ -1,5 +1,8 @@
 # Warmish Web
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 Static, client-side rewrite of Warmish. Runs in any modern browser on any OS,
 with no upload and no server-side processing — and, critically, **no ExifTool
 and no Perl**, which is what breaks the desktop build on other Macs.
@@ -285,3 +288,22 @@ the respective consent (see [Map view](#map-view) and [Automatic scene and area
 labelling](#automatic-scene-and-area-labelling)); nothing else touches the
 network. GitHub, Inc. records the usual access logs for the hosted
 site — covered in the privacy notice.
+
+## How to cite
+
+If you use Warmish Web in your work, please cite the archived release. The
+Zenodo record is the authoritative citation; [`CITATION.cff`](CITATION.cff)
+carries the same metadata, and GitHub's *Cite this repository* button reads it.
+
+> Marchesani, G. E., Cocci Grifoni, R., & Riera, D. (2026). *Warmish Web*
+> (v1.0.0) [Software]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+
+## Authors
+
+- Graziano Enzo Marchesani — Università di Camerino ([ORCID 0000-0002-4723-5099](https://orcid.org/0000-0002-4723-5099))
+- Roberta Cocci Grifoni — Università di Camerino ([ORCID 0000-0002-7092-6293](https://orcid.org/0000-0002-7092-6293))
+- Dajla Riera — Università di Camerino ([ORCID 0000-0003-4349-1471](https://orcid.org/0000-0003-4349-1471))
+
+## License
+
+Released under the [GNU General Public License v3.0 or later](LICENSE).

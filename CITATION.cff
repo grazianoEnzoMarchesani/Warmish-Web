@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Warmish Web"
+type: software
+abstract: >-
+  Warmish Web is a static, client-side tool for processing radiometric FLIR thermal images
+  in the browser, with no upload and no ExifTool. It parses the FLIR APP1 segment, inverts the
+  Planck equation to temperatures, renders palettes and visible-image overlays, supports
+  rectangular, spot and polygon regions of interest, batch processing with zip export, and
+  GPS-based map views. Its numeric core is validated against the original desktop Warmish engine.
+authors:
+  - family-names: Marchesani
+    given-names: Graziano Enzo
+    orcid: "https://orcid.org/0000-0002-4723-5099"
+    affiliation: "Università di Camerino"
+  - family-names: Cocci Grifoni
+    given-names: Roberta
+    orcid: "https://orcid.org/0000-0002-7092-6293"
+    affiliation: "Università di Camerino"
+  - family-names: Riera
+    given-names: Dajla
+    orcid: "https://orcid.org/0000-0003-4349-1471"
+    affiliation: "Università di Camerino"
+repository-code: "https://github.com/grazianoEnzoMarchesani/Warmish-Web"
+url: "https://grazianoenzomarchesani.github.io/Warmish-Web/"
+license: GPL-3.0-or-later
+version: 1.0.0
+date-released: 2026-10-12
+keywords:
+  - thermography
+  - FLIR
+  - radiometric
+  - infrared
+  - thermal imaging
+  - client-side
