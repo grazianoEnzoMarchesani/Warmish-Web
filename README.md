@@ -1,6 +1,6 @@
 # Warmish Web
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23326029.svg)](https://doi.org/10.5281/zenodo.23326029)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 Static, client-side rewrite of Warmish. Runs in any modern browser on any OS,
@@ -296,7 +296,7 @@ Zenodo record is the authoritative citation; [`CITATION.cff`](CITATION.cff)
 carries the same metadata, and GitHub's *Cite this repository* button reads it.
 
 > Marchesani, G. E., Cocci Grifoni, R., & Riera, D. (2026). *Warmish Web*
-> (v1.0.0) [Software]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+> (v1.0.0) [Software]. Zenodo. https://doi.org/10.5281/zenodo.23326029
 
 ## Authors
 
